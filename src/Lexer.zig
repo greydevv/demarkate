@@ -40,21 +40,8 @@ pub fn nextToken(self: *Lexer) Token {
         '#' => .{ .HEADING, self.lexHeading() },
         170 => .{ .EOF, "" },
         '\n' => .{ .NEWLINE, self.lexNewline() },
-        '`' => blk: {
-            const possible_fence = self.file_contents[self.pos..self.pos + 3];
-
-            if (std.mem.eql(u8, possible_fence, "```")) {
-                break :blk .{ .CODE_FENCE, self.lexCodeFence() };
-            } else {
-                break :blk .{ .INLINE_TEXT, self.lexInlineText() };
-            }
-        },
+        '`' => .{ .CODE_FENCE, self.lexCodeFence() },
         else => .{ .INLINE_TEXT, self.lexInlineText() }
-        // else => blk: {
-        //     const unknown_char = self.span(self.pos, self.pos + 1);
-        //     _ = self.nextChar();
-        //     break :blk .{ .UNKNOWN, unknown_char };
-        // }
     };
 
     const token: Token = .{
