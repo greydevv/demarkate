@@ -9,6 +9,7 @@ pub const Kind = enum {
     HEADING,
     INLINE_TEXT,
     NEWLINE,
+    CODE_FENCE,
     UNKNOWN,
     EOF,
 };

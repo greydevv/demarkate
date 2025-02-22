@@ -40,6 +40,15 @@ pub fn nextToken(self: *Lexer) Token {
         '#' => .{ .HEADING, self.lexHeading() },
         170 => .{ .EOF, "" },
         '\n' => .{ .NEWLINE, self.lexNewline() },
+        '`' => blk: {
+            const possible_fence = self.file_contents[self.pos..self.pos + 3];
+
+            if (std.mem.eql(u8, possible_fence, "```")) {
+                break :blk .{ .CODE_FENCE, self.lexCodeFence() };
+            } else {
+                break :blk .{ .INLINE_TEXT, self.lexInlineText() };
+            }
+        },
         else => .{ .INLINE_TEXT, self.lexInlineText() }
         // else => blk: {
         //     const unknown_char = self.span(self.pos, self.pos + 1);
@@ -58,8 +67,16 @@ pub fn nextToken(self: *Lexer) Token {
     return token;
 }
 
-fn span(self: *Lexer, start_pos: u32, end_pos: u32) []u8 {
-    return self.file_contents[start_pos..end_pos];
+fn lexCodeFence(self: *Lexer) []u8 {
+    var char: ?u8 = self.file_contents[self.pos];
+    const start_pos = self.pos;
+
+    while (char == '`') {
+        char = self.nextChar();
+    }
+
+    const end_pos = self.pos;
+    return self.span(start_pos, end_pos);
 }
 
 fn lexNewline(self: *Lexer) []u8 {
@@ -98,6 +115,10 @@ fn lexHeading(self: *Lexer) []u8 {
 
     const end_pos = self.pos;
     return self.span(start_pos, end_pos);
+}
+
+fn span(self: *Lexer, start_pos: u32, end_pos: u32) []u8 {
+    return self.file_contents[start_pos..end_pos];
 }
 
 fn nextChar(self: *Lexer) ?u8 {
