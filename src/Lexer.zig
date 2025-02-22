@@ -12,7 +12,6 @@ const Lexer = @This();
 pos: u32,
 file_contents: []u8,
 
-
 pub fn init(allocator: Allocator, file_path: []const u8) Error!*Lexer {
     const lexer = try allocator.create(Lexer);
 
@@ -38,9 +37,10 @@ pub fn nextToken(self: *Lexer) Token {
     var value: []u8 = undefined;
     kind, value = switch (char) {
         '#' => .{ .HEADING, self.lexHeading() },
+        '*' => .{ .ASTERISK, self.lexRepeating('*') },
+        '\n' => .{ .NEWLINE, self.lexRepeating('\n') },
+        '`' => .{ .CODE_FENCE, self.lexRepeating('`') },
         170 => .{ .EOF, "" },
-        '\n' => .{ .NEWLINE, self.lexNewline() },
-        '`' => .{ .CODE_FENCE, self.lexCodeFence() },
         else => .{ .INLINE_TEXT, self.lexInlineText() }
     };
 
@@ -52,30 +52,6 @@ pub fn nextToken(self: *Lexer) Token {
     Token.debugPrint(&token);
 
     return token;
-}
-
-fn lexCodeFence(self: *Lexer) []u8 {
-    var char: ?u8 = self.file_contents[self.pos];
-    const start_pos = self.pos;
-
-    while (char == '`') {
-        char = self.nextChar();
-    }
-
-    const end_pos = self.pos;
-    return self.span(start_pos, end_pos);
-}
-
-fn lexNewline(self: *Lexer) []u8 {
-    var char: ?u8 = self.file_contents[self.pos];
-    const start_pos = self.pos;
-
-    while (char == '\n') {
-        char = self.nextChar();
-    }
-
-    const end_pos = self.pos;
-    return self.span(start_pos, end_pos);
 }
 
 fn lexInlineText(self: *Lexer) []u8 {
@@ -111,9 +87,21 @@ fn lexHeading(self: *Lexer) []u8 {
     return self.span(start_pos, end_pos);
 }
 
+fn lexRepeating(self: *Lexer, repeating_char: u8) []u8 {
+    var char: ?u8 = self.file_contents[self.pos];
+    const start_pos = self.pos;
+
+    while (char == repeating_char) {
+        char = self.nextChar();
+    }
+
+    const end_pos = self.pos;
+    return self.span(start_pos, end_pos);
+}
+
 fn isTokenizableChar(char: u8) bool {
     return switch (char) {
-        '*', '_', '[', ']' => true,
+        '*', '[', ']' => true,
         else => false
     };
 }
