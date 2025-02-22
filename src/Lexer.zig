@@ -41,7 +41,7 @@ pub fn nextToken(self: *Lexer) Token {
         '#' => .{ .HEADING, self.lexHeading() },
         170 => .{ .EOF, "" },
         else => blk: {
-            const unknown_char = self.span(self.pos, self.pos+1);
+            const unknown_char = self.span(self.pos, self.pos + 1);
             _ = self.nextChar();
             break :blk .{ .UNKNOWN, unknown_char };
         }
