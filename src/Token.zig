@@ -7,6 +7,8 @@ kind: Kind,
 
 pub const Kind = enum {
     HEADING,
+    INLINE_TEXT,
+    NEWLINE,
     UNKNOWN,
     EOF,
 };

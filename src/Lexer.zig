@@ -36,15 +36,16 @@ pub fn nextToken(self: *Lexer) Token {
 
     var kind: Token.Kind = undefined;
     var value: []u8 = undefined;
-    std.debug.print("Current char: {d}\n", .{ char });
     kind, value = switch (char) {
         '#' => .{ .HEADING, self.lexHeading() },
         170 => .{ .EOF, "" },
-        else => blk: {
-            const unknown_char = self.span(self.pos, self.pos + 1);
-            _ = self.nextChar();
-            break :blk .{ .UNKNOWN, unknown_char };
-        }
+        '\n' => .{ .NEWLINE, self.lexNewline() },
+        else => .{ .INLINE_TEXT, self.lexInlineText() }
+        // else => blk: {
+        //     const unknown_char = self.span(self.pos, self.pos + 1);
+        //     _ = self.nextChar();
+        //     break :blk .{ .UNKNOWN, unknown_char };
+        // }
     };
 
     const token: Token = .{
@@ -61,13 +62,28 @@ fn span(self: *Lexer, start_pos: u32, end_pos: u32) []u8 {
     return self.file_contents[start_pos..end_pos];
 }
 
-fn lexInline(self: *Lexer) []u8 {
+fn lexNewline(self: *Lexer) []u8 {
+    var char: ?u8 = self.file_contents[self.pos];
     const start_pos = self.pos;
 
-    const end_pos = self.pos;
-    _ = self.span(start_pos, end_pos);
+    while (char == '\n') {
+        char = self.nextChar();
+    }
 
-    return "inline text";
+    const end_pos = self.pos;
+    return self.span(start_pos, end_pos);
+}
+
+fn lexInlineText(self: *Lexer) []u8 {
+    const start_pos = self.pos;
+    var char: ?u8 = self.file_contents[self.pos];
+
+    while (char != '\n') {
+        char = self.nextChar();
+    }
+
+    const end_pos = self.pos;
+    return self.span(start_pos, end_pos);
 }
 
 fn lexHeading(self: *Lexer) []u8 {
@@ -81,9 +97,7 @@ fn lexHeading(self: *Lexer) []u8 {
     }
 
     const end_pos = self.pos;
-    const value = self.span(start_pos, end_pos);
-
-    return value;
+    return self.span(start_pos, end_pos);
 }
 
 fn nextChar(self: *Lexer) ?u8 {
