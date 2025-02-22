@@ -1,27 +1,23 @@
 const std = @import("std");
-const fs = @import("std").fs;
+const Lexer = @import("lexer.zig");
+const Token = @import("Token.zig");
+
+const file_path = "/Users/gr.murray/Developer/zig/markdown-parser/samples/test.md";
 
 pub fn main() !void {
-    const file = fs.openFileAbsolute(
-        "/Users/gr.murray/Developer/zig/markdown-parser/samples/test.md",
-        .{ .mode = .read_only }
-    ) catch |e| {
-        std.debug.print("Failed to open file: {},", .{ e });
-        return;
-    };
-
-    defer file.close();
-
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer { _ = gpa.deinit(); }
-
     const allocator = gpa.allocator();
-    const buffer: []u8 = try allocator.alloc(u8, 400);
-    defer allocator.free(buffer);
 
-    const n_bytes_read = try file.read(buffer);
+    const lexer = try Lexer.init(allocator, file_path);
+    defer lexer.deinit(allocator);
 
-    std.debug.print("Read {d} bytes from the file.\n", .{ n_bytes_read });
-    std.debug.print("{s}", .{ buffer });
+    for (lexer.file_contents) |char| {
+        std.debug.print("{d}\n", .{ char });
+    }
+
+    var token: Token = lexer.nextToken();
+    while (token.kind != .EOF) {
+        token = lexer.nextToken();
+    }
 }
-
