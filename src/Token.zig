@@ -15,6 +15,11 @@ pub const Kind = enum {
 };
 
 pub fn debugPrint(token: *const Token) void {
+    if (token.kind == .NEWLINE or token.kind == .EOF) {
+        std.debug.print("{s} ({d})\n", .{ @tagName(token.kind), token.value.len });
+        return;
+    }
+
     std.debug.print("{s} {{\n", .{ @tagName(token.kind) });
     std.debug.print("  value: {s} ({})", .{ token.value, token.value.len });
     switch (token.kind) {
