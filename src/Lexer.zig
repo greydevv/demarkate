@@ -36,11 +36,13 @@ pub fn nextToken(self: *Lexer) Token {
     var kind: Token.Kind = undefined;
     var value: []u8 = undefined;
     kind, value = switch (char) {
-        '#' => .{ .HEADING, self.lexHeading() },
-        '*' => .{ .ASTERISK, self.lexRepeating('*') },
+        '#' =>  .{ .HEADING, self.lexHeading() },
+        '*' =>  .{ .ASTERISK, self.lexRepeating('*') },
         '\n' => .{ .NEWLINE, self.lexRepeating('\n') },
-        '`' => .{ .CODE_FENCE, self.lexRepeating('`') },
-        170 => .{ .EOF, "" },
+        '`' =>  .{ .CODE_FENCE, self.lexRepeating('`') },
+        '[', ']' =>  .{ .BRACKET_SQUARE, self.lexOne() },
+        '(', ')' =>  .{ .BRACKET_PAREN, self.lexOne() },
+        170 =>  .{ .EOF, "" },
         else => .{ .INLINE_TEXT, self.lexInlineText() }
     };
 
@@ -61,7 +63,6 @@ fn lexInlineText(self: *Lexer) []u8 {
     while (char != '\n') {
         if (char) |cur_char| {
             if (isTokenizableChar(cur_char)) {
-                char = self.nextChar();
                 break;
             }
         }
@@ -87,6 +88,13 @@ fn lexHeading(self: *Lexer) []u8 {
     return self.span(start_pos, end_pos);
 }
 
+fn lexOne(self: *Lexer) []u8 {
+    const start_pos = self.pos;
+    _ = self.nextChar();
+    const end_pos = self.pos;
+    return self.span(start_pos, end_pos);
+}
+
 fn lexRepeating(self: *Lexer, repeating_char: u8) []u8 {
     var char: ?u8 = self.file_contents[self.pos];
     const start_pos = self.pos;
@@ -101,7 +109,7 @@ fn lexRepeating(self: *Lexer, repeating_char: u8) []u8 {
 
 fn isTokenizableChar(char: u8) bool {
     return switch (char) {
-        '*', '[', ']' => true,
+        '*', '[', ']', '(', ')' => true,
         else => false
     };
 }
