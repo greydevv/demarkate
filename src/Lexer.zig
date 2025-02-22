@@ -83,6 +83,13 @@ fn lexInlineText(self: *Lexer) []u8 {
     var char: ?u8 = self.file_contents[self.pos];
 
     while (char != '\n') {
+        if (char) |cur_char| {
+            if (isTokenizableChar(cur_char)) {
+                char = self.nextChar();
+                break;
+            }
+        }
+
         char = self.nextChar();
     }
 
@@ -102,6 +109,13 @@ fn lexHeading(self: *Lexer) []u8 {
 
     const end_pos = self.pos;
     return self.span(start_pos, end_pos);
+}
+
+fn isTokenizableChar(char: u8) bool {
+    return switch (char) {
+        '*', '_', '[', ']' => true,
+        else => false
+    };
 }
 
 fn span(self: *Lexer, start_pos: u32, end_pos: u32) []u8 {
