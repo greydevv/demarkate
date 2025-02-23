@@ -24,7 +24,6 @@ pub fn deinit(self: *Lexer, allocator: Allocator) void {
 
 pub fn nextToken(self: *Lexer) Token {
     if (self.atEof()) {
-        std.debug.print("returning eof\n", .{});
         return Token.eof;
     }
 
@@ -111,22 +110,26 @@ fn isTokenizableChar(char: u8) bool {
 }
 
 fn atEof(self: *Lexer) bool {
-    return self.pos == self.buf.len - 1;
+    // not buf.len - 1 because the span needs to capture all input
+    // and it is not inclusive.
+    return self.pos == self.buf.len;
 }
 
 fn span(self: *Lexer, start_pos: u32, end_pos: u32) []const u8 {
-    if (self.atEof()) {
-        return self.buf[start_pos..end_pos + 1];
-    }
     return self.buf[start_pos..end_pos];
 }
 
 fn nextChar(self: *Lexer) ?u8 {
-    if (self.pos == self.buf.len - 1) {
+    if (self.atEof()) {
         return null;
     }
 
     self.pos += 1;
+
+    if (self.atEof()) {
+        return null;
+    }
+
     return self.buf[self.pos];
 }
 
@@ -137,7 +140,7 @@ test "lexes heading" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    const expected_toks: [3]Token = .{
+    const expected_toks = [_]Token{
         Token{
             .kind = .HEADING,
             .value = "###"
