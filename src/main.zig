@@ -18,9 +18,11 @@ pub fn main() !void {
     const lexer = try Lexer.init(allocator, source_buf);
     defer lexer.deinit(allocator);
 
-    var token: Token = lexer.nextToken();
+    var token = lexer.nextToken();
+    Token.debugPrint(&token);
     while (token.kind != .EOF) {
         token = lexer.nextToken();
+        Token.debugPrint(&token);
     }
 }
 

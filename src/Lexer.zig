@@ -23,6 +23,11 @@ pub fn deinit(self: *Lexer, allocator: Allocator) void {
 }
 
 pub fn nextToken(self: *Lexer) Token {
+    if (self.atEof()) {
+        std.debug.print("returning eof\n", .{});
+        return Token.eof;
+    }
+
     const char = self.buf[self.pos];
 
     var kind: Token.Kind = undefined;
@@ -34,7 +39,7 @@ pub fn nextToken(self: *Lexer) Token {
         '`' => .{ .CODE_FENCE, self.lexRepeating('`') },
         '[', ']' => .{ .BRACKET_SQUARE, self.lexOne() },
         '(', ')' => .{ .BRACKET_PAREN, self.lexOne() },
-        170 => .{ .EOF, "" },
+        170 => return Token.eof,
         else => .{ .INLINE_TEXT, self.lexInlineText() }
     };
 
@@ -43,8 +48,6 @@ pub fn nextToken(self: *Lexer) Token {
         .kind = kind
     };
 
-    Token.debugPrint(&token);
-
     return token;
 }
 
@@ -52,7 +55,7 @@ fn lexInlineText(self: *Lexer) []const u8 {
     const start_pos = self.pos;
     var char: ?u8 = self.buf[self.pos];
 
-    while (char != '\n') {
+    while (char != '\n' and !self.atEof()) {
         if (char) |cur_char| {
             if (isTokenizableChar(cur_char)) {
                 break;
@@ -106,12 +109,19 @@ fn isTokenizableChar(char: u8) bool {
     };
 }
 
+fn atEof(self: *Lexer) bool {
+    return self.pos == self.buf.len - 1;
+}
+
 fn span(self: *Lexer, start_pos: u32, end_pos: u32) []const u8 {
+    if (self.atEof()) {
+        return self.buf[start_pos..end_pos + 1];
+    }
     return self.buf[start_pos..end_pos];
 }
 
 fn nextChar(self: *Lexer) ?u8 {
-    if (self.pos > self.buf.len - 1) {
+    if (self.pos == self.buf.len - 1) {
         return null;
     }
 
