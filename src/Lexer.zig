@@ -128,3 +128,45 @@ fn nextChar(self: *Lexer) ?u8 {
     self.pos += 1;
     return self.buf[self.pos];
 }
+
+const expect = std.testing.expect;
+
+test "lexes heading" {
+    const source = "### Heading";
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+
+    const expected_toks: [3]Token = .{
+        Token{
+            .kind = .HEADING,
+            .value = "###"
+        },
+        Token{
+            .kind = .INLINE_TEXT,
+            .value = " Heading"
+        },
+        Token{
+            .kind = .EOF,
+            .value = ""
+        }
+    };
+
+    const lexer = try Lexer.init(
+        allocator,
+        source
+    );
+
+    for (expected_toks) |tok| {
+        const actual_tok = lexer.nextToken();
+
+        std.debug.print("{s} == {s}\n", .{ @tagName(actual_tok.kind), @tagName(tok.kind) });
+        std.debug.print("{s} == {s}\n", .{ actual_tok.value, tok.value });
+
+        try expect(actual_tok.kind == tok.kind);
+        try expect(std.mem.eql(u8, actual_tok.value, tok.value));
+    }
+}
+
+
+
+
