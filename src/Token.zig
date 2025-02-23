@@ -11,9 +11,9 @@ pub const Kind = enum {
     NEWLINE,
     CODE_FENCE,
     ASTERISK,
-    UNKNOWN,
     BRACKET_SQUARE,
     BRACKET_PAREN,
+    UNKNOWN,
     EOF,
 };
 
