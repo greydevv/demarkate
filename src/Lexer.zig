@@ -35,8 +35,9 @@ pub fn nextToken(self: *Lexer) Token {
     kind, value = switch (char) {
         '#' => .{ .HEADING, self.lexHeading() },
         '*' => .{ .ASTERISK, self.lexRepeating('*') },
-        '\n' => .{ .NEWLINE, self.lexRepeating('\n') },
         '`' => .{ .CODE_FENCE, self.lexRepeating('`') },
+        '\n' => .{ .NEWLINE, self.lexRepeating('\n') },
+        '>' => .{ .GREATER_THAN, self.lexOne() },
         '[', ']' => .{ .BRACKET_SQUARE, self.lexOne() },
         '(', ')' => .{ .BRACKET_PAREN, self.lexOne() },
         170 => return Token.eof,
