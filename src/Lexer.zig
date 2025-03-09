@@ -1,17 +1,25 @@
-const std = @import("std");
-const Token = @import("Token.zig");
-
-const Allocator = std.mem.Allocator;
 const Lexer = @This();
 
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const Token = @import("Token.zig");
+
 pos: u32,
+char: u8,
 buf: []const u8,
 
-pub fn init(allocator: Allocator, source_buf: []const u8) Allocator.Error!*Lexer {
+const Error = Allocator.Error || error{EmptySourceBuf};
+
+pub fn init(allocator: Allocator, source_buf: []const u8) Error!*Lexer {
+    if (source_buf.len == 0) {
+        return Error.EmptySourceBuf;
+    }
+
     const lexer = try allocator.create(Lexer);
 
     lexer.* = .{
         .pos = 0,
+        .char = source_buf[0],
         .buf = source_buf,
     };
 
@@ -27,11 +35,10 @@ pub fn nextToken(self: *Lexer) Token {
         return Token.eof;
     }
 
-    const char = self.buf[self.pos];
-
     var kind: Token.Kind = undefined;
     var value: []const u8 = undefined;
-    kind, value = switch (char) {
+
+    kind, value = switch (self.char) {
         '#' => .{ .HEADING, self.lexHeading() },
         '*' => .{ .ASTERISK, self.lexRepeating('*') },
         '`' => .{ .CODE_FENCE, self.lexRepeating('`') },
@@ -43,26 +50,17 @@ pub fn nextToken(self: *Lexer) Token {
         else => .{ .INLINE_TEXT, self.lexInlineText() }
     };
 
-    const token: Token = .{
+    return .{
         .value = value,
         .kind = kind
     };
-
-    return token;
 }
 
+/// Consumes inline text until a tokenizable character appears.
 fn lexInlineText(self: *Lexer) []const u8 {
     const start_pos = self.pos;
-    var char: ?u8 = self.buf[self.pos];
-
-    while (char != '\n' and !self.atEof()) {
-        if (char) |cur_char| {
-            if (isTokenizableChar(cur_char)) {
-                break;
-            }
-        }
-
-        char = self.nextChar();
+    while (std.ascii.isAlphanumeric(self.char) and self.char != '\n' and !self.atEof()) {
+        self.nextChar();
     }
 
     const end_pos = self.pos;
@@ -71,12 +69,11 @@ fn lexInlineText(self: *Lexer) []const u8 {
 
 fn lexHeading(self: *Lexer) []const u8 {
     const start_pos = self.pos;
-    var char: ?u8 = self.buf[self.pos];
     var level: u32 = 0;
 
-    while (char == '#' and level < 6) {
+    while (self.char == '#' and level < 6) {
         level += 1;
-        char = self.nextChar();
+        self.nextChar();
     }
 
     const end_pos = self.pos;
@@ -85,55 +82,98 @@ fn lexHeading(self: *Lexer) []const u8 {
 
 fn lexOne(self: *Lexer) []const u8 {
     const start_pos = self.pos;
-    _ = self.nextChar();
+    self.nextChar();
     const end_pos = self.pos;
     return self.span(start_pos, end_pos);
 }
 
+/// Returns a slice of the source buffer containing repeating characters.
 fn lexRepeating(self: *Lexer, repeating_char: u8) []const u8 {
-    var char: ?u8 = self.buf[self.pos];
     const start_pos = self.pos;
 
-    while (char == repeating_char) {
-        char = self.nextChar();
+    while (self.char == repeating_char) {
+        self.nextChar();
     }
 
     const end_pos = self.pos;
     return self.span(start_pos, end_pos);
 }
 
-fn isTokenizableChar(char: u8) bool {
-    return switch (char) {
-        '*', '[', ']', '(', ')' => true,
-        else => false
-    };
+fn atEof(self: *const Lexer) bool {
+    return self.char == 0;
 }
 
-fn atEof(self: *Lexer) bool {
-    // not buf.len - 1 because the span needs to capture all input
-    // and it is not inclusive.
-    return self.pos == self.buf.len;
-}
-
-fn span(self: *Lexer, start_pos: u32, end_pos: u32) []const u8 {
+/// Returns a slice of the source buffer from `start_pos` to `end_pos` (not inclusive).
+fn span(self: *const Lexer, start_pos: u32, end_pos: u32) []const u8 {
     return self.buf[start_pos..end_pos];
 }
 
-fn nextChar(self: *Lexer) ?u8 {
-    if (self.atEof()) {
-        return null;
+/// This is the only method that should be used to set `pos` and `char`.
+///
+/// Using `self.buf[self.pos]` is dangerous.
+fn nextChar(self: *Lexer) void {
+    if (self.pos == self.buf.len - 1) {
+        self.pos += 1;
+        self.char = 0;
+        return;
     }
 
     self.pos += 1;
-
-    if (self.atEof()) {
-        return null;
-    }
-
-    return self.buf[self.pos];
+    self.char = self.buf[self.pos];
 }
 
 const expect = std.testing.expect;
+const expectError = std.testing.expectError;
+
+fn expectTokens(lexer: *Lexer, expected_toks: []const Token) !void {
+    for (expected_toks) |tok| {
+        const actual_tok = lexer.nextToken();
+
+        expect(std.meta.eql(actual_tok, tok)) catch |e| {
+            std.debug.print("Test Failed\n", .{});
+            std.debug.print("  {s} == {s}\n", .{ @tagName(actual_tok.kind), @tagName(tok.kind) });
+            std.debug.print("  {s} == {s}\n", .{ actual_tok.value, tok.value });
+            return e;
+        };
+    }
+}
+
+test "init fails when given empty source" {
+    const source = "";
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer { _ = gpa.deinit(); }
+    const allocator = gpa.allocator();
+
+    const lexer = Lexer.init(
+        allocator,
+        source
+    );
+
+    try expectError(Error.EmptySourceBuf, lexer);
+}
+
+test "returns eof" {
+    const source = "hello, world!";
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer { _ = gpa.deinit(); }
+    const allocator = gpa.allocator();
+
+    const expected_toks = [_]Token{
+        Token{
+            .kind = .INLINE_TEXT,
+            .value = "hello, world!"
+        },
+        Token.eof
+    };
+
+    const lexer = try Lexer.init(
+        allocator,
+        source
+    );
+    defer lexer.deinit(allocator);
+
+    try expectTokens(lexer, &expected_toks);
+}
 
 test "lexes heading" {
     const source = "### Heading";
@@ -149,28 +189,22 @@ test "lexes heading" {
             .kind = .INLINE_TEXT,
             .value = " Heading"
         },
-        Token{
-            .kind = .EOF,
-            .value = ""
-        }
+        Token.eof
     };
 
     const lexer = try Lexer.init(
         allocator,
         source
     );
+    defer lexer.deinit(allocator);
 
     for (expected_toks) |tok| {
         const actual_tok = lexer.nextToken();
 
-        std.debug.print("{s} == {s}\n", .{ @tagName(actual_tok.kind), @tagName(tok.kind) });
-        std.debug.print("{s} == {s}\n", .{ actual_tok.value, tok.value });
+        // std.debug.print("{s} == {s}\n", .{ @tagName(actual_tok.kind), @tagName(tok.kind) });
+        // std.debug.print("{s} == {s}\n", .{ actual_tok.value, tok.value });
 
         try expect(actual_tok.kind == tok.kind);
         try expect(std.mem.eql(u8, actual_tok.value, tok.value));
     }
 }
-
-
-
-
