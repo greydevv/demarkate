@@ -142,41 +142,6 @@ fn inlineText(self: *Tokenizer) Token {
     return token;
 }
 
-fn expectTokens(buffer: [:0]const u8, comptime expected_tokens: []const Token) !void {
-    var tokenizer = Tokenizer{
-        .buffer = buffer
-    };
-
-    for (expected_tokens) |expected| {
-        const received = tokenizer.next();
-        std.testing.expect(std.meta.eql(expected, received)) catch |err| {
-            std.debug.print("Test failed: ", .{});
-            if (expected.tag != received.tag) {
-                std.debug.print(
-                    "unequal tags\n\t{s} != {s}\n",
-                    .{ @tagName(expected.tag), @tagName(received.tag) }
-                );
-            } else if (expected.loc.start_index != received.loc.start_index) {
-                std.debug.print(
-                    "unequal start index\n\t{} != {}\n",
-                    .{ expected.loc.start_index, received.loc.start_index }
-                );
-            } else if (expected.loc.end_index != received.loc.end_index) {
-                std.debug.print(
-                    "unequal start index\n\t{} != {}\n",
-                    .{ expected.loc.end_index, received.loc.end_index })
-                ;
-            } else {
-                std.debug.print("unknown inequality\n", .{});
-            }
-            return err;
-        };
-    }
-
-    // tokenizer should be "drained" at this point
-    try std.testing.expectEqual(tokenizer.index, buffer.len);
-}
-
 test "inline text only" {
     const buffer: [:0]const u8 = "hello, world";
     const expected_tokens = [_]Token{
@@ -243,4 +208,25 @@ test "whitespace buffer" {
     };
 
     try expectTokens(buffer, &expected_tokens);
+}
+
+fn expectTokens(
+    buffer: [:0]const u8,
+    expected_tokens: []const Token
+) !void {
+    var tokenizer = Tokenizer.init(buffer);
+    for (expected_tokens) |expected| {
+        const received = tokenizer.next();
+        try std.testing.expectEqual(expected.tag, received.tag);
+        try std.testing.expectEqual(expected.loc.start_index, received.loc.start_index);
+        try std.testing.expectEqual(expected.loc.end_index, received.loc.end_index);
+    }
+
+    const eof_token = tokenizer.next();
+    try std.testing.expectEqual(Token.Tag.eof, eof_token.tag);
+    try std.testing.expectEqual(buffer.len, eof_token.loc.start_index);
+    try std.testing.expectEqual(buffer.len, eof_token.loc.end_index);
+
+    // tokenizer should be "drained" at this point (EOF)
+    try std.testing.expectEqual(buffer.len, tokenizer.index);
 }
