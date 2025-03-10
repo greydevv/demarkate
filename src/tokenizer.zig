@@ -36,14 +36,14 @@ pub fn next(self: *Tokenizer) Token {
     if (self.cached_token) |cached_token| {
         self.cached_token = null;
         return cached_token;
-    } else if (self.nextStatic()) |next_static_token| {
-        return next_static_token;
+    } else if (self.nextLiteral()) |next_literal_token| {
+        return next_literal_token;
     } else {
         return self.inlineText();
     }
 }
 
-fn nextStatic(self: *Tokenizer) ?Token {
+fn nextLiteral(self: *Tokenizer) ?Token {
     var token = Token{
         .tag = undefined,
         .loc = .{
@@ -122,7 +122,7 @@ fn inlineText(self: *Tokenizer) Token {
 
     while (true) {
         // consume until we get some other token, then cache it
-        if (self.nextStatic()) |next_token| {
+        if (self.nextLiteral()) |next_token| {
             token.loc.end_index = next_token.loc.start_index;
             self.cached_token = next_token;
             break;
