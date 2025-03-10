@@ -235,26 +235,3 @@ fn expectTokens(
     // tokenizer should be "drained" at this point (EOF)
     try std.testing.expectEqual(buffer.len, tokenizer.index);
 }
-
-// std.testing.expect(std.meta.eql(expected, received)) catch |err| {
-//     std.debug.print("Test failed: ", .{});
-//     if (expected.tag != received.tag) {
-//         std.debug.print(
-//             "unequal tags\n\t{s} != {s}\n",
-//             .{ @tagName(expected.tag), @tagName(received.tag) }
-//         );
-//     } else if (expected.loc.start_index != received.loc.start_index) {
-//         std.debug.print(
-//             "unequal start index\n\t{} != {}\n",
-//             .{ expected.loc.start_index, received.loc.start_index }
-//         );
-//     } else if (expected.loc.end_index != received.loc.end_index) {
-//         std.debug.print(
-//             "unequal start index\n\t{} != {}\n",
-//             .{ expected.loc.end_index, received.loc.end_index })
-//         ;
-//     } else {
-//         std.debug.print("unknown inequality\n", .{});
-//     }
-//     return err;
-// };
