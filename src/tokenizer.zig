@@ -14,8 +14,8 @@ pub const Token = struct {
         asterisk,
         bang,
         close_angle,
-        open_square,
-        close_square,
+        open_bracket,
+        close_bracket,
         open_paren,
         close_paren,
         unknown,
@@ -89,11 +89,11 @@ fn nextStatic(self: *Tokenizer) ?Token {
             self.index += 1;
         },
         '[' => {
-            token.tag = .open_square;
+            token.tag = .open_bracket;
             self.index += 1;
         },
         ']' => {
-            token.tag = .close_square;
+            token.tag = .close_bracket;
             self.index += 1;
         },
         '(' => {
