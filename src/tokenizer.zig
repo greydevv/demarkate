@@ -74,15 +74,15 @@ fn nextStatic(self: *Tokenizer) ?Token {
                 self.index += 1;
             }
         },
-        '!' => {
-            token.tag = .bang;
-            self.index += 1;
-        },
         '\n' => {
             token.tag = .newline;
             while (self.buffer[self.index] == '\n') {
                 self.index += 1;
             }
+        },
+        '!' => {
+            token.tag = .bang;
+            self.index += 1;
         },
         '>' => {
             token.tag = .close_angle;
