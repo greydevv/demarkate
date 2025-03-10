@@ -77,9 +77,27 @@ fn nextStatic(self: *Tokenizer) ?Token {
                 self.index += 1;
             }
         },
-        else => {
-            return null;
-        }
+        '>' => {
+            token.tag = .greater_than;
+            self.index += 1;
+        },
+        '[' => {
+            token.tag = .bracket_square;
+            self.index += 1;
+        },
+        ']' => {
+            token.tag = .bracket_square;
+            self.index += 1;
+        },
+        '(' => {
+            token.tag = .bracket_paren;
+            self.index += 1;
+        },
+        ')' => {
+            token.tag = .bracket_paren;
+            self.index += 1;
+        },
+        else => return null
     }
 
     token.loc.end_index = self.index;
@@ -107,10 +125,3 @@ fn inlineText(self: *Tokenizer) Token {
 
     return token;
 }
-
-
-
-
-
-
-
