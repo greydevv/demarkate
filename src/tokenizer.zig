@@ -120,8 +120,8 @@ fn inlineText(self: *Tokenizer) Token {
         }
     };
 
-    // consume until we get some other token, then cache the next token
     while (true) {
+        // consume until we get some other token, then cache it
         if (self.nextStatic()) |next_token| {
             token.loc.end_index = next_token.loc.start_index;
             self.cached_token = next_token;
