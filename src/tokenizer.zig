@@ -32,6 +32,14 @@ buffer: [:0]const u8,
 index: usize = 0,
 cached_token: ?Token = null,
 
+pub fn init(buffer: [:0]const u8) Tokenizer {
+    return .{
+        .buffer = buffer,
+        .index = 0,
+        .cached_token = null,
+    };
+}
+
 pub fn next(self: *Tokenizer) Token {
     if (self.cached_token) |cached_token| {
         self.cached_token = null;
