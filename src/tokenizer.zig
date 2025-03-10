@@ -29,7 +29,7 @@ pub const Token = struct {
 };
 
 buffer: [:0]const u8,
-index: usize,
+index: usize = 0,
 cached_token: ?Token = null,
 
 pub fn next(self: *Tokenizer) Token {
