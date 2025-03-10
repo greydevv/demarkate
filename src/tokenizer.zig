@@ -8,7 +8,7 @@ pub const Token = struct {
 
     pub const Tag = enum {
         heading,
-        inline_text,
+        literal_text,
         newline,
         backtick,
         asterisk,
@@ -18,7 +18,7 @@ pub const Token = struct {
         close_bracket,
         open_paren,
         close_paren,
-        escape,
+        backslash,
         unknown,
         eof
     };
@@ -45,14 +45,14 @@ pub fn next(self: *Tokenizer) Token {
     if (self.cached_token) |cached_token| {
         self.cached_token = null;
         return cached_token;
-    } else if (self.nextLiteral()) |next_literal_token| {
-        return next_literal_token;
+    } else if (self.nextStructural()) |next_structural_token| {
+        return next_structural_token;
     } else {
-        return self.inlineText();
+        return self.literalText();
     }
 }
 
-fn nextLiteral(self: *Tokenizer) ?Token {
+fn nextStructural(self: *Tokenizer) ?Token {
     var token = Token{
         .tag = undefined,
         .loc = .{
@@ -114,7 +114,7 @@ fn nextLiteral(self: *Tokenizer) ?Token {
             self.index += 1;
         },
         '\\' => {
-            token.tag = .escape;
+            token.tag = .backslash;
             self.index += 1;
         },
         else => return null
@@ -124,9 +124,9 @@ fn nextLiteral(self: *Tokenizer) ?Token {
     return token;
 }
 
-fn inlineText(self: *Tokenizer) Token {
+fn literalText(self: *Tokenizer) Token {
     var token = Token{
-        .tag = .inline_text,
+        .tag = .literal_text,
         .loc = .{
             .start_index = self.index,
             .end_index = undefined,
@@ -135,7 +135,7 @@ fn inlineText(self: *Tokenizer) Token {
 
     while (true) {
         // consume until we get some other token, then cache it
-        if (self.nextLiteral()) |next_token| {
+        if (self.nextStructural()) |next_token| {
             token.loc.end_index = next_token.loc.start_index;
             self.cached_token = next_token;
             break;
@@ -151,7 +151,7 @@ test "inline text only" {
     const buffer: [:0]const u8 = "hello, world";
     const expected_tokens = [_]Token{
         .{
-            .tag = .inline_text,
+            .tag = .literal_text,
             .loc = .{ .start_index = 0, .end_index = 12 },
         },
         .{
@@ -171,7 +171,7 @@ test "inline text between literals" {
             .loc = .{ .start_index = 0, .end_index = 1 },
         },
         .{
-            .tag = .inline_text,
+            .tag = .literal_text,
             .loc = .{ .start_index = 1, .end_index = 13 }
         },
         .{
@@ -203,7 +203,7 @@ test "whitespace buffer" {
     const buffer: [:0]const u8 = " ";
     const expected_tokens = [_]Token{
         .{
-            .tag = .inline_text,
+            .tag = .literal_text,
             .loc = .{ .start_index = 0, .end_index = 1 },
         },
         .{
