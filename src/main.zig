@@ -1,37 +1,48 @@
 const std = @import("std");
-const Lexer = @import("lexer.zig");
 const File = std.fs.File;
-const Token = @import("Token.zig");
+const Allocator = std.mem.Allocator;
+
+const Tokenizer = @import("Tokenizer.zig");
+const Token = Tokenizer.Token;
 
 const sample_file_path = "/Users/gr.murray/Developer/zig/markdown-parser/samples/test.md";
-const FileIoError = File.OpenError || File.ReadError;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer { _ = gpa.deinit(); }
     const allocator = gpa.allocator();
 
-    const source_buf = try allocator.alloc(u8, 400);
-    defer allocator.free(source_buf);
-    try readFile(sample_file_path, source_buf);
+    const buffer = try readFileAlloc(allocator, sample_file_path);
+    defer allocator.free(buffer);
 
-    const lexer = try Lexer.init(allocator, source_buf);
-    defer lexer.deinit(allocator);
+    std.log.info("Read {} bytes into buffer\n", .{ buffer.len });
 
-    var token = lexer.nextToken();
-    Token.debugPrint(&token);
-    while (token.kind != .EOF) {
-        token = lexer.nextToken();
-        Token.debugPrint(&token);
+    var tokenizer = Tokenizer{
+        .buffer = buffer[0..:0],
+        .index = 0,
+    };
+
+    var token: Token = undefined;
+    while (token.tag != .eof) {
+        token = tokenizer.next();
+        std.log.info("Tokenized token: {s} ({}, {})", .{
+            @tagName(token.tag),
+            token.loc.start_index,
+            token.loc.end_index
+        });
     }
 }
 
-fn readFile(file_path: []const u8, buffer: []u8) FileIoError!void {
+fn readFileAlloc(allocator: Allocator, file_path: []const u8) ![:0]u8 {
     const open_flags = File.OpenFlags { .mode = .read_only };
-
     const file = try std.fs.openFileAbsolute(file_path, open_flags);
     defer file.close();
 
-    _ = try file.readAll(buffer);
+    return try file.readToEndAllocOptions(
+        allocator,
+        8192,
+        null,
+        @alignOf(u8),
+        0
+    );
 }
-
