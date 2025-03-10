@@ -10,11 +10,14 @@ pub const Token = struct {
         heading,
         inline_text,
         newline,
-        code_fence,
+        backtick,
         asterisk,
-        greater_than,
-        bracket_square,
-        bracket_paren,
+        bang,
+        close_angle,
+        open_square,
+        close_square,
+        open_paren,
+        close_paren,
         unknown,
         eof
     };
@@ -66,10 +69,14 @@ fn nextStatic(self: *Tokenizer) ?Token {
             }
         },
         '`' => {
-            token.tag = .code_fence;
+            token.tag = .backtick;
             while (self.buffer[self.index] == '`') {
                 self.index += 1;
             }
+        },
+        '!' => {
+            token.tag = .bang;
+            self.index += 1;
         },
         '\n' => {
             token.tag = .newline;
@@ -78,23 +85,23 @@ fn nextStatic(self: *Tokenizer) ?Token {
             }
         },
         '>' => {
-            token.tag = .greater_than;
+            token.tag = .close_angle;
             self.index += 1;
         },
         '[' => {
-            token.tag = .bracket_square;
+            token.tag = .open_square;
             self.index += 1;
         },
         ']' => {
-            token.tag = .bracket_square;
+            token.tag = .close_square;
             self.index += 1;
         },
         '(' => {
-            token.tag = .bracket_paren;
+            token.tag = .open_paren;
             self.index += 1;
         },
         ')' => {
-            token.tag = .bracket_paren;
+            token.tag = .close_paren;
             self.index += 1;
         },
         else => return null
