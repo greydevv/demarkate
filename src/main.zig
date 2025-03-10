@@ -25,7 +25,7 @@ pub fn main() !void {
     var token: Token = undefined;
     while (token.tag != .eof) {
         token = tokenizer.next();
-        std.log.info("Tokenized token: {s} ({}, {})", .{
+        std.log.info("tokenized {s} ({}, {})", .{
             @tagName(token.tag),
             token.loc.start_index,
             token.loc.end_index
