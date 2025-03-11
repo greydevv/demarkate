@@ -49,6 +49,8 @@ pub fn parse(self: *Parser) !void {
                 try node.addChild(inline_el);
                 break :blk node;
             },
+            .newline => Element.initLeaf(.line_break, token),
+            .literal_text => Element.initLeaf(.text, token),
             .eof => break :loop,
             else => return self.err(.unexpected_token, token),
         };

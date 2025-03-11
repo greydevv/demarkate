@@ -34,6 +34,7 @@ pub const Element = union(Element.Type) {
 
         pub const Tag = enum {
             text,
+            line_break,
         };
     };
 
