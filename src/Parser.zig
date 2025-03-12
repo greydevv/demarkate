@@ -7,16 +7,29 @@ const Allocator = std.mem.Allocator;
 
 const Parser = @This();
 
+pub const Error = struct {
+    tag: Tag,
+    token: Token,
+
+    pub const Tag = enum {
+        invalid_heading_size,
+        unexpected_token,
+        invalid_number_of_backticks,
+        unterminated_code_block,
+    };
+};
+
 allocator: Allocator,
-tokenizer: *Tokenizer,
+tokens: []const Token,
 elements: std.ArrayList(Element),
 errors: std.ArrayList(Error),
 
-pub fn init(allocator: Allocator, tokenizer: *Tokenizer) Parser {
+pub fn init(allocator: Allocator, tokens: []const Token) Parser {
     return .{
         .allocator = allocator,
-        .tokenizer = tokenizer,
-        // TODO: use assume capacity strategy that zig uses, ((tokens.len + 2) / 2)
+        .tokens = tokens,
+        // TODO: use assume capacity strategy that zig uses, ((tokens.len + 2) / 2),
+        // but tailor it to markdown.
         .elements = std.ArrayList(Element).init(allocator),
         .errors = std.ArrayList(Error).init(allocator),
     };
@@ -32,7 +45,7 @@ pub fn deinit(self: *Parser) void {
 }
 
 pub fn parse(self: *Parser) !void {
-    loop: while (true) {
+    while (true) {
         const token = self.tokenizer.next();
         if (token.tag == .eof) {
             break;
@@ -41,7 +54,7 @@ pub fn parse(self: *Parser) !void {
         const el = switch (token.tag) {
             .heading => blk: {
                 if (token.len() > 6) {
-                    return self.err(.heading_too_small, token);
+                    return self.err(.invalid_heading_size, token);
                 }
 
                 const inline_el = try self.parseInline();
@@ -51,7 +64,15 @@ pub fn parse(self: *Parser) !void {
             },
             .newline => Element.initLeaf(.line_break, token),
             .literal_text => Element.initLeaf(.text, token),
-            .eof => break :loop,
+            .backtick => blk: {
+                if (token.len() != 1 and token.len() != 3) {
+                    return self.err(.invalid_number_of_backticks, token);
+                }
+
+                const node = try self.parseCodeBlock(token.len());
+                break :blk node;
+            },
+            .eof => return,
             else => return self.err(.unexpected_token, token),
         };
 
@@ -68,12 +89,86 @@ fn parseInline(self: *Parser) !Element {
     return Element.initLeaf(.text, token);
 }
 
+fn parseCodeBlock(self: *Parser, n_open_backticks: usize) !Element {
+    var lines = std.ArrayList(Element).init(self.allocator);
+
+    while(true) {
+        var line = self.consumeUntilLineBreakOrEof();
+        var token = self.tokenizer.next();
+        if (token.tag == .backtick and token.len() == n_open_backticks) {
+            break;
+        }
+
+        // if (token.tag == .newline) {
+        //     const line_break = Element.initLeaf(.line_break, token);
+        //     try lines.append(line_break);
+        //     continue;
+        // }
+
+        const line_start_index = token.loc.start_index;
+        var line_end_index: ?usize = null;
+
+        while(true) {
+            if (token.tag == .newline) {
+                const line_break = Element.initLeaf(.line_break, token);
+                try lines.append(line_break);
+                break;
+            }
+
+            line_end_index = token.loc.end_index;
+            token = self.tokenizer.next();
+        }
+
+        if (line_end_index) |end_index| {
+            const el = Element.initLeaf(
+                .text,
+                Token{
+                    .tag = .literal_text,
+                    .loc = .{
+                        .start_index = line_start_index,
+                        .end_index = end_index
+                    }
+                }
+            );
+
+            try lines.append(el);
+        }
+    }
+
+    return Element{
+        .node = .{
+            .tag = .code,
+            .children = lines
+        }
+    };
+}
+
+fn consumeUntilLineBreakOrEof(self: *Parser) ?Token {
+    var token = self.tokenizer.next();
+
+    var result_token = Token{
+        .tag = .literal_text,
+        .loc = token.loc,
+    };
+
+    while(true) {
+        if (token.tag == .newline or token.tag == .eof) {
+            break;
+        } else {
+            result_token.loc.end_index = token.loc.end_index;
+        }
+
+        token = self.tokenizer.next();
+    }
+
+    return result_token;
+}
 
 fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemory } {
     switch(tag) {
-        .heading_too_small =>
+        .invalid_heading_size =>
             std.log.err(
-                "Heading too small ({})", .{
+                "Invalid heading size: {}", .{
                     token.len()
                 }
             ),
@@ -86,6 +181,16 @@ fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemo
                     token.loc.end_index 
                 }
             ),
+        .invalid_number_of_backticks =>
+            std.log.err(
+                "Invalid number of backticks: {}", .{
+                    token.len()
+                }
+            ),
+        .unterminated_code_block =>
+            std.log.err(
+                "Unterminated code block", .{}
+            ),
     }
 
     try self.errors.append(.{
@@ -95,13 +200,3 @@ fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemo
 
     return error.ParseError;
 }
-
-pub const Error = struct {
-    tag: Tag,
-    token: Token,
-
-    pub const Tag = enum {
-        heading_too_small,
-        unexpected_token,
-    };
-};

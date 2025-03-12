@@ -16,7 +16,8 @@ pub const Element = union(Element.Type) {
         children: std.ArrayList(Element),
 
         pub const Tag = enum {
-            heading
+            heading,
+            code
         };
 
         pub fn deinit(self: *Node) void {

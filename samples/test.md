@@ -1,4 +1,4 @@
-## Sample markdown file
+###### Sample markdown file
 
 This is a sample markdown file. Here's some code:
 ```zig
@@ -9,4 +9,4 @@ pub fn main() !void {
 }
 ```
 
-Some text to finish off.*
+Some text to finish off.
