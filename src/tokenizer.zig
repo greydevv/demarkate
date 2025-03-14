@@ -31,6 +31,10 @@ pub const Token = struct {
     pub fn len(self: *const Token) usize {
         return self.loc.end_index - self.loc.start_index;
     }
+
+    pub fn slice(self: *const Token, buffer: [:0]const u8) []const u8 {
+        return buffer[self.loc.start_index..self.loc.end_index];
+    }
 };
 
 buffer: [:0]const u8,
@@ -68,6 +72,11 @@ fn nextStructural(self: *Tokenizer) ?Token {
     switch (self.buffer[self.index]) {
         0 => {
             token.tag = .eof;
+        },
+        // TODO: DELETE THIS CASE. THIS IS JUST FOR TESTING (EARLY EXIT TO PARSER).
+        '&' => {
+            token.tag = .eof;
+            std.log.warn("Encountered early EOF character.", .{});
         },
         '#' => {
             token.tag = .heading;
