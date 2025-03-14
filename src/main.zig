@@ -27,23 +27,13 @@ pub fn main() !void {
         if (token.tag == .eof) break;
     }
 
-    var parser = Parser.init(allocator, tokens.items, buffer);
+    var parser = Parser.init(allocator, tokens.items);
     defer parser.deinit();
     try parser.parse();
 
     for (parser.elements.items) |el| {
         try printAst(allocator, &el, 0, &tokenizer);
     }
-
-    // var token: Token = undefined;
-    // while (token.tag != .eof) {
-    //     token = tokenizer.next();
-    //     std.log.info("tokenized {s} ({}, {})", .{
-    //         @tagName(token.tag),
-    //         token.loc.start_index,
-    //         token.loc.end_index
-    //     });
-    // }
 }
 
 fn readFileAlloc(allocator: Allocator, file_path: []const u8) ![:0]u8 {

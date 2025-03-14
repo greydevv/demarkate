@@ -1,6 +1,7 @@
 const std = @import("std");
 const ast = @import("ast.zig");
 const Tokenizer = @import("Tokenizer.zig");
+
 const Token = Tokenizer.Token;
 const Element = ast.Element;
 const Allocator = std.mem.Allocator;
@@ -25,9 +26,8 @@ tokens: []const Token,
 tok_i: usize,
 elements: std.ArrayList(Element),
 errors: std.ArrayList(Error),
-buffer: [:0]const u8,
 
-pub fn init(allocator: Allocator, tokens: []const Token, buffer: [:0]const u8) Parser {
+pub fn init(allocator: Allocator, tokens: []const Token) Parser {
     return .{
         .allocator = allocator,
         .tokens = tokens,
@@ -36,7 +36,6 @@ pub fn init(allocator: Allocator, tokens: []const Token, buffer: [:0]const u8) P
         // but tailor it to markdown.
         .elements = std.ArrayList(Element).init(allocator),
         .errors = std.ArrayList(Error).init(allocator),
-        .buffer = buffer,
     };
 }
 
@@ -64,6 +63,8 @@ pub fn parse(self: *Parser) !void {
                 const line_break = try self.eatLineBreak();
 
                 var heading = Element.initNode(self.allocator, .heading);
+                errdefer heading.deinit();
+
                 try heading.addChild(inline_el);
                 try heading.addChild(line_break);
 
@@ -96,40 +97,36 @@ fn parseCodeBlock(self: *Parser) !Element {
     var code_el = Element.initNode(self.allocator, .code);
     errdefer code_el.deinit();
 
-    switch (self.tokens[self.tok_i].tag) {
-        .literal_text => {
-            // literal text before a newline is the language for syntax highlighting
-            const lang = self.eatLineOfCode(open_backtick_token);
-            try code_el.addChild(lang);
-        },
-        .eof => return self.err(.unterminated_code_block, open_backtick_token),
-        else => {}
+    if (self.tokens[self.tok_i].tag == .backtick and self.tokens[self.tok_i].len() == open_backtick_token.len()) {
+        return self.err(.empty_code_block, open_backtick_token);
     }
 
-    try code_el.addChild(try self.eatLineBreak());
-
-    if (self.tokens[self.tok_i].tag == .backtick) {
-        if (self.tokens[self.tok_i].len() == open_backtick_token.len()) {
-            return self.err(.empty_code_block, open_backtick_token);
-        }
-    }
-
-    while (true) {
+    loop: while (true) {
         const token = self.tokens[self.tok_i];
-        if (token.tag == .backtick and token.len() == open_backtick_token.len()) {
-            _ = self.eatToken();
-            break;
+
+        switch (token.tag) {
+            .backtick => {
+                if (token.len() == open_backtick_token.len()) {
+                    _ = self.eatToken();
+                    break :loop;
+                }
+            },
+            .eof => {
+                return self.err(.unterminated_code_block, open_backtick_token);
+            },
+            else => {}
         }
 
-        if (token.tag == .eof) {
-            return self.err(.unterminated_code_block, open_backtick_token);
+        switch (token.tag) {
+            .newline => {
+                const line_break = try self.eatLineBreak();
+                try code_el.addChild(line_break);
+            },
+            else => {
+                const line = self.eatLineOfCode(open_backtick_token);
+                try code_el.addChild(line);
+            }
         }
-
-        const line = self.eatLineOfCode(open_backtick_token);
-        try code_el.addChild(line);
-
-        const line_break = try self.eatLineBreak();
-        try code_el.addChild(line_break);
     }
 
     return code_el;
@@ -223,4 +220,43 @@ fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemo
     });
 
     return error.ParseError;
+}
+
+const SourceBuilder = @import("testing/source_builder.zig").SourceBuilder;
+
+test "fails on invalid code fence" {
+    const builder = try SourceBuilder.init(std.testing.allocator);
+    defer builder.deinit();
+    const source = builder
+        .make(.backtick, 2)
+        .build();
+
+    var parser = Parser.init(
+        std.testing.allocator,
+        source,
+    );
+    defer parser.deinit();
+
+    const result = parser.parse();
+    try std.testing.expectError(error.ParseError, result);
+}
+
+
+test "fails on empty code block" {
+    const builder = try SourceBuilder.init(std.testing.allocator);
+    defer builder.deinit();
+    const source = builder
+        .make(.backtick, 3)
+        .make(.newline, 1)
+        .make(.backtick, 3)
+        .build();
+
+    var parser = Parser.init(
+        std.testing.allocator,
+        source
+    );
+    defer parser.deinit();
+
+    const result = parser.parse();
+    try std.testing.expectError(error.ParseError, result);
 }
