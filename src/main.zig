@@ -19,7 +19,15 @@ pub fn main() !void {
     std.log.info("Read {} bytes into buffer", .{ buffer.len });
 
     var tokenizer = Tokenizer.init(buffer[0..:0]);
-    var parser = Parser.init(allocator, &tokenizer);
+    var tokens = std.ArrayList(Token).init(allocator);
+    defer tokens.deinit();
+    while(true) {
+        const token = tokenizer.next();
+        try tokens.append(token);
+        if (token.tag == .eof) break;
+    }
+
+    var parser = Parser.init(allocator, tokens.items, buffer);
     defer parser.deinit();
     try parser.parse();
 
@@ -72,7 +80,7 @@ fn printAst(allocator: Allocator, el: *const Element, depth: u32, tokenizer: *co
                 std.debug.print("{s}- {s} ({s})\n", .{
                     indent,
                     @tagName(leaf.tag),
-                    tokenizer.buffer[token.loc.start_index..token.loc.end_index]
+                    token.slice(tokenizer.buffer),
                 });
             } else {
                 std.debug.print("{s}- {s}\n", .{ indent, @tagName(leaf.tag) });

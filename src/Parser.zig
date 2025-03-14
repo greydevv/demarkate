@@ -14,6 +14,7 @@ pub const Error = struct {
     pub const Tag = enum {
         invalid_heading_size,
         unexpected_token,
+        empty_code_block,
         invalid_number_of_backticks,
         unterminated_code_block,
     };
@@ -21,17 +22,21 @@ pub const Error = struct {
 
 allocator: Allocator,
 tokens: []const Token,
+tok_i: usize,
 elements: std.ArrayList(Element),
 errors: std.ArrayList(Error),
+buffer: [:0]const u8,
 
-pub fn init(allocator: Allocator, tokens: []const Token) Parser {
+pub fn init(allocator: Allocator, tokens: []const Token, buffer: [:0]const u8) Parser {
     return .{
         .allocator = allocator,
         .tokens = tokens,
+        .tok_i = 0,
         // TODO: use assume capacity strategy that zig uses, ((tokens.len + 2) / 2),
         // but tailor it to markdown.
         .elements = std.ArrayList(Element).init(allocator),
         .errors = std.ArrayList(Error).init(allocator),
+        .buffer = buffer,
     };
 }
 
@@ -46,10 +51,7 @@ pub fn deinit(self: *Parser) void {
 
 pub fn parse(self: *Parser) !void {
     while (true) {
-        const token = self.tokenizer.next();
-        if (token.tag == .eof) {
-            break;
-        }
+        const token = self.tokens[self.tok_i];
 
         const el = switch (token.tag) {
             .heading => blk: {
@@ -57,111 +59,129 @@ pub fn parse(self: *Parser) !void {
                     return self.err(.invalid_heading_size, token);
                 }
 
-                const inline_el = try self.parseInline();
-                var node = Element.initNode(self.allocator, .heading);
-                try node.addChild(inline_el);
-                break :blk node;
+                _ = self.eatToken();
+                const inline_el = try self.eatInline();
+                const line_break = try self.eatLineBreak();
+
+                var heading = Element.initNode(self.allocator, .heading);
+                try heading.addChild(inline_el);
+                try heading.addChild(line_break);
+
+                break :blk heading;
             },
-            .newline => Element.initLeaf(.line_break, token),
-            .literal_text => Element.initLeaf(.text, token),
+            .newline => try self.eatLineBreak(),
+            .literal_text => try self.eatInline(),
             .backtick => blk: {
                 if (token.len() != 1 and token.len() != 3) {
                     return self.err(.invalid_number_of_backticks, token);
                 }
 
-                const node = try self.parseCodeBlock(token.len());
-                break :blk node;
+                break :blk try self.parseCodeBlock();
             },
             .eof => return,
-            else => return self.err(.unexpected_token, token),
+            else => {
+                // skip token (for now)
+                std.log.warn("Unhandled token ({s})", .{ @tagName(token.tag) });
+                _ = self.eatToken();
+                continue;
+            },
         };
 
         try self.elements.append(el);
     }
 }
 
-fn parseInline(self: *Parser) !Element {
-    const token = self.tokenizer.next();
-    if (token.tag != .literal_text) {
+fn parseCodeBlock(self: *Parser) !Element {
+    const open_backtick_token = self.eatToken();
+    var code_el = Element.initNode(self.allocator, .code);
+    errdefer code_el.deinit();
+
+    switch (self.tokens[self.tok_i].tag) {
+        .literal_text => {
+            // literal text before a newline is the language for syntax highlighting
+            const lang = self.eatLineOfCode(open_backtick_token);
+            try code_el.addChild(lang);
+        },
+        .eof => return self.err(.unterminated_code_block, open_backtick_token),
+        else => {}
+    }
+
+    try code_el.addChild(try self.eatLineBreak());
+
+    if (self.tokens[self.tok_i].tag == .backtick) {
+        if (self.tokens[self.tok_i].len() == open_backtick_token.len()) {
+            return self.err(.empty_code_block, open_backtick_token);
+        }
+    }
+
+    while (true) {
+        const token = self.tokens[self.tok_i];
+        if (token.tag == .backtick and token.len() == open_backtick_token.len()) {
+            _ = self.eatToken();
+            break;
+        }
+
+        if (token.tag == .eof) {
+            return self.err(.unterminated_code_block, open_backtick_token);
+        }
+
+        const line = self.eatLineOfCode(open_backtick_token);
+        try code_el.addChild(line);
+
+        const line_break = try self.eatLineBreak();
+        try code_el.addChild(line_break);
+    }
+
+    return code_el;
+}
+
+fn eatLineOfCode(self: *Parser, open_backtick: Token) Element {
+    var result_token = Token{
+        .tag = .literal_text,
+        .loc = self.tokens[self.tok_i].loc
+    };
+
+    while (true) {
+        const token = self.tokens[self.tok_i];
+        if (token.tag == .newline or token.tag == .eof or (token.tag == .backtick and token.len() == open_backtick.len())) {
+            break;
+        } else {
+            const consumed_token = self.eatToken();
+            result_token.loc.end_index = consumed_token.loc.end_index;
+        }
+    }
+
+    return Element.initLeaf(.text, result_token);
+}
+
+fn eatLineBreak(self: *Parser) !Element {
+    const token = self.tokens[self.tok_i];
+    if (token.tag != .newline) {
         return self.err(.unexpected_token, token);
     }
 
+    _ = self.eatToken();
+    return Element.initLeaf(.line_break, token);
+}
+
+fn eatInline(self: *Parser) !Element {
+    const token = self.tokens[self.tok_i];
+    if (token.tag != .literal_text) {
+        // TODO: allow inline content like italics
+        return self.err(.unexpected_token, token);
+    }
+
+    _ = self.eatToken();
     return Element.initLeaf(.text, token);
 }
 
-fn parseCodeBlock(self: *Parser, n_open_backticks: usize) !Element {
-    var lines = std.ArrayList(Element).init(self.allocator);
-
-    while(true) {
-        var line = self.consumeUntilLineBreakOrEof();
-        var token = self.tokenizer.next();
-        if (token.tag == .backtick and token.len() == n_open_backticks) {
-            break;
-        }
-
-        // if (token.tag == .newline) {
-        //     const line_break = Element.initLeaf(.line_break, token);
-        //     try lines.append(line_break);
-        //     continue;
-        // }
-
-        const line_start_index = token.loc.start_index;
-        var line_end_index: ?usize = null;
-
-        while(true) {
-            if (token.tag == .newline) {
-                const line_break = Element.initLeaf(.line_break, token);
-                try lines.append(line_break);
-                break;
-            }
-
-            line_end_index = token.loc.end_index;
-            token = self.tokenizer.next();
-        }
-
-        if (line_end_index) |end_index| {
-            const el = Element.initLeaf(
-                .text,
-                Token{
-                    .tag = .literal_text,
-                    .loc = .{
-                        .start_index = line_start_index,
-                        .end_index = end_index
-                    }
-                }
-            );
-
-            try lines.append(el);
-        }
+fn eatToken(self: *Parser) Token {
+    if (self.tok_i == self.tokens.len - 1) {
+        return self.tokens[self.tok_i];
     }
 
-    return Element{
-        .node = .{
-            .tag = .code,
-            .children = lines
-        }
-    };
-}
-
-fn consumeUntilLineBreakOrEof(self: *Parser) ?Token {
-    var token = self.tokenizer.next();
-
-    var result_token = Token{
-        .tag = .literal_text,
-        .loc = token.loc,
-    };
-
-    while(true) {
-        if (token.tag == .newline or token.tag == .eof) {
-            break;
-        } else {
-            result_token.loc.end_index = token.loc.end_index;
-        }
-
-        token = self.tokenizer.next();
-    }
-
-    return result_token;
+    self.tok_i += 1;
+    return self.tokens[self.tok_i - 1];
 }
 
 fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemory } {
@@ -186,6 +206,10 @@ fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemo
                 "Invalid number of backticks: {}", .{
                     token.len()
                 }
+            ),
+        .empty_code_block =>
+            std.log.err(
+                "Empty code block", .{}
             ),
         .unterminated_code_block =>
             std.log.err(
