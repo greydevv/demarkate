@@ -13,7 +13,7 @@ pub fn tok(tag: Token.Tag, len: usize) *Builder {
 }
 
 pub fn free(source: []Token) void {
-    std.testing.allocator.free(source);
+    allocator.free(source);
 }
 
 pub const Builder = struct {
@@ -21,7 +21,7 @@ pub const Builder = struct {
 
     pub fn deinit(self: *Builder) void {
         self.tokens.deinit();
-        self.allocator.destroy(self);
+        allocator.destroy(self);
     }
 
     pub fn tok(self: *Builder, tag: Token.Tag, len: usize) *Builder {
@@ -44,6 +44,7 @@ pub const Builder = struct {
     pub fn eof(self: *Builder) []Token {
         _ = self.tok(.eof, 0);
         const source = self.tokens.toOwnedSlice() catch unreachable;
+        self.deinit();
         return source;
     }
 };
