@@ -7,4 +7,4 @@ zig-out/
 /docgen_tmp/
 zig-cache/
 
-samples/**
+samples/
