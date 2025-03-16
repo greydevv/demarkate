@@ -16,6 +16,7 @@ pub const Error = struct {
         invalid_heading_size,
         unexpected_token,
         invalid_number_of_backticks,
+        no_line_break_before_block_code,
         empty_block_code,
         unterminated_block_code,
         empty_inline_code,
@@ -79,6 +80,7 @@ pub fn parse(self: *Parser) !void {
                     1 => try self.parseInlineCode(),
                     2 => return self.err(.empty_inline_code, token),
                     3 => try self.parseBlockCode(),
+                    6 => return self.err(.empty_block_code, token),
                     else => return self.err(.invalid_number_of_backticks, token),
                 },
             .eof => return,
@@ -122,8 +124,8 @@ fn parseBlockCode(self: *Parser) !Element {
     var code_el = Element.initNode(self.allocator, .code);
     errdefer code_el.deinit();
 
-    if (self.tokens[self.tok_i].tag == .backtick and self.tokens[self.tok_i].len() == open_backtick_token.len()) {
-        return self.err(.empty_block_code, open_backtick_token);
+    if (self.tok_i > 0 and self.tokens[self.tok_i - 1].tag != .newline) {
+        return self.err(.no_line_break_before_block_code, open_backtick_token);
     }
 
     while (true) {
