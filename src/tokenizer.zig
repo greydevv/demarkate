@@ -167,8 +167,6 @@ fn literalText(self: *Tokenizer) Token {
     return token;
 }
 
-const SourceBuilder = @import("testing/source_builder.zig").SourceBuilder;
-
 test "empty" {
     const buffer: [:0]const u8 = "";
     const expected_tokens = [_]Token{
