@@ -12,6 +12,7 @@ pub const Token = struct {
         newline,
         backtick,
         asterisk,
+        underscore,
         bang,
         close_angle,
         open_bracket,
@@ -85,6 +86,12 @@ fn nextStructural(self: *Tokenizer) ?Token {
         },
         '*' => {
             token.tag = .asterisk;
+            while (self.buffer[self.index] == '*') {
+                self.index += 1;
+            }
+        },
+        '_' => {
+            token.tag = .underscore;
             while (self.buffer[self.index] == '*') {
                 self.index += 1;
             }
