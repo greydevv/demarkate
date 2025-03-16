@@ -13,9 +13,8 @@ pub const Error = struct {
     token: Token,
 
     pub const Tag = enum {
-        invalid_heading_size,
         unexpected_token,
-        invalid_number_of_backticks,
+        invalid_token,
         no_line_break_before_block_code,
         empty_block_code,
         unterminated_block_code,
@@ -58,7 +57,7 @@ pub fn parse(self: *Parser) !void {
         const el = switch (token.tag) {
             .heading => blk: {
                 if (token.len() > 6) {
-                    return self.err(.invalid_heading_size, token);
+                    return self.err(.invalid_token, token);
                 }
 
                 _ = self.eatToken();
@@ -81,7 +80,7 @@ pub fn parse(self: *Parser) !void {
                     2 => return self.err(.empty_inline_code, token),
                     3 => try self.parseBlockCode(),
                     6 => return self.err(.empty_block_code, token),
-                    else => return self.err(.invalid_number_of_backticks, token),
+                    else => return self.err(.invalid_token, token),
                 },
             .eof => return,
             else => {
@@ -96,9 +95,20 @@ pub fn parse(self: *Parser) !void {
     }
 }
 
-fn parseInlineCode(_: *Parser) !Element {
-    unreachable;
-    // const open_backtick_token = self.eatToken();
+fn parseInlineCode(self: *Parser) !Element {
+    const open_backtick_token = self.eatToken();
+
+    var code_el = Element.initNode(self.allocator, .code);
+    errdefer code_el.deinit();
+
+    while (true) {
+        const token = self.tokens[self.tok_i];
+        switch (token.tag) {
+            .eof => return self.err(.unterminated_inline_code, open_backtick_token),
+            .newline => return self.err(.unexpected_token, token),
+            else => {}
+        }
+    }
     // const code_token = self.eatLineOfCode(open_backtick_token);
     //
     // const token = self.tokens[self.tok_i];
@@ -120,13 +130,13 @@ fn parseInlineCode(_: *Parser) !Element {
 }
 
 fn parseBlockCode(self: *Parser) !Element {
+    if (self.tok_i > 0 and self.tokens[self.tok_i - 1].tag != .newline) {
+        return self.err(.no_line_break_before_block_code, self.tokens[self.tok_i]);
+    }
+
     const open_backtick_token = self.eatToken();
     var code_el = Element.initNode(self.allocator, .code);
     errdefer code_el.deinit();
-
-    if (self.tok_i > 0 and self.tokens[self.tok_i - 1].tag != .newline) {
-        return self.err(.no_line_break_before_block_code, open_backtick_token);
-    }
 
     while (true) {
         const token = self.tokens[self.tok_i];
@@ -210,13 +220,6 @@ fn eatToken(self: *Parser) Token {
 
 fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemory } {
     switch(tag) {
-        .invalid_heading_size =>
-            std.log.err(
-                "Invalid heading size: {}", .{
-                    token.len()
-                }
-            ),
-        // this is a catch-all for now
         .unexpected_token =>
             std.log.err(
                 "Unexpected token ({s}) from {} to {}", .{
@@ -225,11 +228,17 @@ fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemo
                     token.loc.end_index 
                 }
             ),
-        .invalid_number_of_backticks =>
+        .invalid_token =>
             std.log.err(
-                "Invalid number of backticks: {}", .{
-                    token.len()
+                "Invalid token ({s}) from {} to {}", .{
+                    @tagName(token.tag),
+                    token.loc.start_index,
+                    token.loc.end_index 
                 }
+            ),
+        .no_line_break_before_block_code =>
+            std.log.err(
+                "No line break before code block", .{}
             ),
         .empty_block_code =>
             std.log.err(
