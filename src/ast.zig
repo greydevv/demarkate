@@ -13,7 +13,9 @@ pub const Element = union(Element.Type) {
 
     pub const Node = struct {
         tag: Tag,
-        children: std.ArrayList(Element),
+        children: Children,
+
+        pub const Children = std.ArrayList(Element);
 
         pub const Tag = enum {
             heading,
@@ -22,7 +24,7 @@ pub const Element = union(Element.Type) {
             bold
         };
 
-        pub fn deinit(self: *Node) void {
+        pub fn deinit(self: *const Node) void {
             for (self.children.items) |*child| {
                 child.deinit();
             }
@@ -39,7 +41,6 @@ pub const Element = union(Element.Type) {
             text,
             code_literal,
             line_break,
-            inline_code
         };
     };
 
@@ -48,7 +49,7 @@ pub const Element = union(Element.Type) {
             .node = Node{
                 .tag = tag,
                 // TODO: maybe init capacity?
-                .children = std.ArrayList(Element).init(allocator)
+                .children = Node.Children.init(allocator)
             }
         };
     } 
@@ -62,7 +63,7 @@ pub const Element = union(Element.Type) {
         };
     }
 
-    pub fn deinit(self: *Element) void {
+    pub fn deinit(self: *const Element) void {
         switch (self.*) {
             .node => |*n| n.deinit(),
             .leaf => return,
@@ -73,6 +74,20 @@ pub const Element = union(Element.Type) {
         switch (self.*) {
             .node => |*n| try n.children.append(child),
             .leaf => return error.NotANode,
+        }
+    }
+
+    pub fn lastChild(self: *const Element) *Element {
+        switch (self.*) {
+            .node => |*n| return &n.children.items[n.children.items.len - 1],
+            .leaf => unreachable,
+        }
+    }
+
+    pub fn children(self: *const Element) []Element {
+        switch (self.*) {
+            .node => |*n| return n.children.items,
+            .leaf => unreachable,
         }
     }
 };

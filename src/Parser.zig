@@ -8,6 +8,8 @@ const Allocator = std.mem.Allocator;
 
 const Parser = @This();
 
+const ParseError = error{};
+
 pub const Error = struct {
     tag: Tag,
     token: Token,
@@ -15,6 +17,7 @@ pub const Error = struct {
     pub const Tag = enum {
         unexpected_token,
         invalid_token,
+        unterminated_modifier,
         no_line_break_before_block_code,
         empty_block_code,
         unterminated_block_code,
@@ -61,7 +64,7 @@ pub fn parse(self: *Parser) !void {
                 }
 
                 _ = self.eatToken();
-                const inline_el = try self.eatInline();
+                const inline_el = try self.eatText();
                 const line_break = try self.eatLineBreak();
 
                 var heading = Element.initNode(self.allocator, .heading);
@@ -73,7 +76,9 @@ pub fn parse(self: *Parser) !void {
                 break :blk heading;
             },
             .newline => try self.eatLineBreak(),
-            .literal_text => try self.eatInline(),
+            .literal_text => try self.eatText(),
+            .underscore => try self.parseInlineModifier(.italic),
+            .asterisk => try self.parseInlineModifier(.bold),
             .backtick =>
                 switch (token.len()) {
                     1 => try self.parseInlineCode(),
@@ -171,15 +176,95 @@ fn eatLineBreak(self: *Parser) !Element {
     return Element.initLeaf(.line_break, token);
 }
 
-fn eatInline(self: *Parser) !Element {
+fn eatText(self: *Parser) !Element {
     const token = self.tokens[self.tok_i];
     if (token.tag != .literal_text) {
-        // TODO: allow inline content like italics
         return self.err(.unexpected_token, token);
     }
 
     _ = self.eatToken();
     return Element.initLeaf(.text, token);
+}
+
+fn parseInlineModifier(self: *Parser, node_tag: Element.Node.Tag) !Element {
+    // TODO: throw error if closing modifier starts on newline, but opening doesn't
+    // (and vice-versa)
+
+    var top_node = Element.initNode(self.allocator, node_tag);
+    errdefer top_node.deinit();
+
+    var el_stack = std.ArrayList(Element).init(self.allocator);
+    var tag_stack = std.ArrayList(Element.Node.Tag).init(self.allocator);
+    var token_stack = std.ArrayList(Token).init(self.allocator);
+    defer el_stack.deinit();
+    defer tag_stack.deinit();
+    defer token_stack.deinit();
+
+    try el_stack.append(top_node);
+    try tag_stack.append(node_tag);
+    std.debug.print("initializing stack with {s}\n", .{ @tagName(self.tokens[self.tok_i].tag) });
+    try token_stack.append(self.eatToken());
+
+    var top_of_stack = &top_node;
+    while (el_stack.items.len > 0) {
+        const token = self.tokens[self.tok_i];
+
+        switch (token.tag) {
+            .asterisk,
+            .underscore => |tag| {
+                std.debug.print("saw {s}\n", .{ @tagName(self.tokens[self.tok_i].tag) });
+                const modifier_tag = elementTagFromTokenTag(tag);
+                const modifier_token = self.eatToken();
+
+                if (tag_stack.getLast() == modifier_tag) {
+                    // modifier closed, pop from stack
+                    _ = el_stack.pop();
+                    _ = tag_stack.pop();
+                    _ = token_stack.pop();
+
+                    if (el_stack.items.len > 0) {
+                        top_of_stack = &el_stack.items[el_stack.items.len - 1];
+                        std.debug.print("SETTING TOP OF STACK\n", .{});
+                    } else {
+                        std.debug.print("STACK IS EMPTY\n", .{});
+                    }
+                } else {
+                    const modifier_node = Element.initNode(
+                        self.allocator,
+                        modifier_tag,
+                    );
+
+                    // TODO: need errdefer here?
+
+                    // modifier opened, push onto stack
+                    try el_stack.append(modifier_node);
+                    try tag_stack.append(modifier_tag);
+                    try token_stack.append(modifier_token);
+                    
+                    try top_of_stack.addChild(modifier_node);
+                    top_of_stack = top_of_stack.lastChild();
+                }
+            },
+            .literal_text => {
+                const text_el = try self.eatText();
+                std.debug.print("TOP OF STACK: {s}\n", .{ @tagName(tag_stack.getLast()) });
+                try top_of_stack.addChild(text_el);
+            },
+            .eof => return self.err(.unterminated_modifier, token_stack.getLast()),
+            .newline => return self.err(.unexpected_token, token),
+            else => unreachable
+        }
+    }
+
+    return top_node;
+}
+
+fn elementTagFromTokenTag(tag: Token.Tag) Element.Node.Tag {
+    switch (tag) {
+        .asterisk => return .bold,
+        .underscore => return .italic,
+        else => unreachable
+    }
 }
 
 fn eatToken(self: *Parser) Token {
@@ -207,6 +292,12 @@ fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemo
                     @tagName(token.tag),
                     token.loc.start_index,
                     token.loc.end_index 
+                }
+            ),
+        .unterminated_modifier =>
+            std.log.err(
+                "Unterminated inline modifier ({s})", .{
+                    @tagName(token.tag)
                 }
             ),
         .no_line_break_before_block_code =>
