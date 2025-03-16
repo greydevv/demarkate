@@ -86,15 +86,11 @@ fn nextStructural(self: *Tokenizer) ?Token {
         },
         '*' => {
             token.tag = .asterisk;
-            while (self.buffer[self.index] == '*') {
-                self.index += 1;
-            }
+            self.index += 1;
         },
         '_' => {
             token.tag = .underscore;
-            while (self.buffer[self.index] == '*') {
-                self.index += 1;
-            }
+            self.index += 1;
         },
         '`' => {
             token.tag = .backtick;
