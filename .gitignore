@@ -6,3 +6,5 @@ zig-out/
 /build-*/
 /docgen_tmp/
 zig-cache/
+
+samples/**
