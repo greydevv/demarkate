@@ -70,9 +70,13 @@ pub const Element = union(Element.Type) {
         }
     }
 
-    pub fn addChild(self: *Element, child: Element) !void {
+    pub fn addChild(self: *Element, child: Element) !*Element {
         switch (self.*) {
-            .node => |*n| try n.children.append(child),
+            .node => |*n| {
+                try n.children.append(child);
+                return &n.children.items[n.children.items.len - 1];
+            },
+            // TODO: should this be unreachable?
             .leaf => return error.NotANode,
         }
     }

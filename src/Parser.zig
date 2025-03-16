@@ -70,8 +70,8 @@ pub fn parse(self: *Parser) !void {
                 var heading = Element.initNode(self.allocator, .heading);
                 errdefer heading.deinit();
 
-                try heading.addChild(inline_el);
-                try heading.addChild(line_break);
+                _ = try heading.addChild(inline_el);
+                _ = try heading.addChild(line_break);
 
                 break :blk heading;
             },
@@ -118,7 +118,7 @@ fn parseInlineCode(self: *Parser) !Element {
                 }
 
                 const child = Element.initLeaf(.code_literal, token);
-                try code_el.addChild(child);
+                _ = try code_el.addChild(child);
                 _ = self.eatToken();
             },
         }
@@ -142,7 +142,7 @@ fn parseBlockCode(self: *Parser) !Element {
             .eof => return self.err(.unterminated_block_code, open_backtick_token),
             .newline => {
                 const child = Element.initLeaf(.line_break, token);
-                try code_el.addChild(child);
+                _ = try code_el.addChild(child);
                 _ = self.eatToken();
             },
             else => {
@@ -157,7 +157,7 @@ fn parseBlockCode(self: *Parser) !Element {
                 }
 
                 const child = Element.initLeaf(.code_literal, token);
-                try code_el.addChild(child);
+                _ = try code_el.addChild(child);
                 _ = self.eatToken();
             }
         }
@@ -193,14 +193,14 @@ fn parseInlineModifier(self: *Parser, node_tag: Element.Node.Tag) !Element {
     var top_node = Element.initNode(self.allocator, node_tag);
     errdefer top_node.deinit();
 
-    var el_stack = std.ArrayList(Element).init(self.allocator);
+    var el_stack = std.ArrayList(*Element).init(self.allocator);
     var tag_stack = std.ArrayList(Element.Node.Tag).init(self.allocator);
     var token_stack = std.ArrayList(Token).init(self.allocator);
     defer el_stack.deinit();
     defer tag_stack.deinit();
     defer token_stack.deinit();
 
-    try el_stack.append(top_node);
+    try el_stack.append(&top_node);
     try tag_stack.append(node_tag);
     try token_stack.append(self.eatToken());
 
@@ -221,34 +221,30 @@ fn parseInlineModifier(self: *Parser, node_tag: Element.Node.Tag) !Element {
                     _ = token_stack.pop();
 
                     if (el_stack.items.len > 0) {
-                        top_of_stack = &el_stack.items[el_stack.items.len - 1];
-                    } else {
+                        top_of_stack = el_stack.getLast();
                     }
                 } else {
-                    const modifier_node = Element.initNode(
+                    const new_top = try top_of_stack.addChild(Element.initNode(
                         self.allocator,
                         modifier_tag,
-                    );
+                    ));
+
+                    top_of_stack = new_top;
 
                     // TODO: need errdefer here?
 
                     // modifier opened, push onto stack
-                    try el_stack.append(modifier_node);
+                    try el_stack.append(new_top);
                     try tag_stack.append(modifier_tag);
                     try token_stack.append(modifier_token);
-                    
-                    try top_of_stack.addChild(modifier_node);
-
-                    // set it to the child we just added
-                    top_of_stack = top_of_stack.lastChild();
                 }
             },
             .literal_text => {
                 const text_el = try self.eatText();
-                try top_of_stack.addChild(text_el);
+                _ = try top_of_stack.addChild(text_el);
             },
+            .newline,
             .eof => return self.err(.unterminated_modifier, token_stack.getLast()),
-            .newline => return self.err(.unexpected_token, token),
             else => unreachable
         }
     }
