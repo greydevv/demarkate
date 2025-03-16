@@ -202,7 +202,6 @@ fn parseInlineModifier(self: *Parser, node_tag: Element.Node.Tag) !Element {
 
     try el_stack.append(top_node);
     try tag_stack.append(node_tag);
-    std.debug.print("initializing stack with {s}\n", .{ @tagName(self.tokens[self.tok_i].tag) });
     try token_stack.append(self.eatToken());
 
     var top_of_stack = &top_node;
@@ -212,7 +211,6 @@ fn parseInlineModifier(self: *Parser, node_tag: Element.Node.Tag) !Element {
         switch (token.tag) {
             .asterisk,
             .underscore => |tag| {
-                std.debug.print("saw {s}\n", .{ @tagName(self.tokens[self.tok_i].tag) });
                 const modifier_tag = elementTagFromTokenTag(tag);
                 const modifier_token = self.eatToken();
 
@@ -224,9 +222,7 @@ fn parseInlineModifier(self: *Parser, node_tag: Element.Node.Tag) !Element {
 
                     if (el_stack.items.len > 0) {
                         top_of_stack = &el_stack.items[el_stack.items.len - 1];
-                        std.debug.print("SETTING TOP OF STACK\n", .{});
                     } else {
-                        std.debug.print("STACK IS EMPTY\n", .{});
                     }
                 } else {
                     const modifier_node = Element.initNode(
@@ -242,12 +238,13 @@ fn parseInlineModifier(self: *Parser, node_tag: Element.Node.Tag) !Element {
                     try token_stack.append(modifier_token);
                     
                     try top_of_stack.addChild(modifier_node);
+
+                    // set it to the child we just added
                     top_of_stack = top_of_stack.lastChild();
                 }
             },
             .literal_text => {
                 const text_el = try self.eatText();
-                std.debug.print("TOP OF STACK: {s}\n", .{ @tagName(tag_stack.getLast()) });
                 try top_of_stack.addChild(text_el);
             },
             .eof => return self.err(.unterminated_modifier, token_stack.getLast()),
