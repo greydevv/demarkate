@@ -18,7 +18,6 @@ pub const Token = struct {
         close_bracket,
         open_paren,
         close_paren,
-        backslash,
         unknown,
         eof
     };
@@ -126,10 +125,6 @@ fn nextStructural(self: *Tokenizer) ?Token {
             token.tag = .close_paren;
             self.index += 1;
         },
-        '\\' => {
-            token.tag = .backslash;
-            self.index += 1;
-        },
         else => return null
     }
 
@@ -152,13 +147,56 @@ fn literalText(self: *Tokenizer) Token {
             token.loc.end_index = next_token.loc.start_index;
             self.cached_token = next_token;
             break;
-        } else {
-            self.index += 1;
         }
+
+        // if escape, process next or return EOF
+        if (self.buffer[self.index] == '\\') {
+            if (self.buffer[self.index + 1] == 0) {
+                self.index += 1;
+                token.loc.end_index = self.index;
+                break;
+            }
+
+            self.index += 2;
+            continue;
+        }
+
+        self.index += 1;
     }
 
     return token;
 }
+
+const SourceBuilder = @import("testing/source_builder.zig").SourceBuilder;
+
+test "empty" {
+    const buffer: [:0]const u8 = "";
+    const expected_tokens = [_]Token{
+        .{
+            .tag = .eof,
+            .loc = .{ .start_index = 0, .end_index = 0 },
+        }
+    };
+
+    try expectTokens(buffer, &expected_tokens);
+}
+
+test "whitespace only" {
+    const buffer: [:0]const u8 = " ";
+    const expected_tokens = [_]Token{
+        .{
+            .tag = .literal_text,
+            .loc = .{ .start_index = 0, .end_index = 1 },
+        },
+        .{
+            .tag = .eof,
+            .loc = .{ .start_index = 1, .end_index = 1},
+        }
+    };
+
+    try expectTokens(buffer, &expected_tokens);
+}
+
 
 test "inline text only" {
     const buffer: [:0]const u8 = "hello, world";
@@ -176,7 +214,39 @@ test "inline text only" {
     try expectTokens(buffer, &expected_tokens);
 }
 
-test "inline text between literals" {
+test "escape character" {
+    const buffer: [:0]const u8 = "hello\\#world";
+    const expected_tokens = [_]Token{
+        .{
+            .tag = .literal_text,
+            .loc = .{ .start_index = 0, .end_index = 12 },
+        },
+        .{
+            .tag = .eof,
+            .loc = .{ .start_index = 12, .end_index = 12 }
+        },
+    };
+
+    try expectTokens(buffer, &expected_tokens);
+}
+
+test "escape character at eof" {
+    const buffer: [:0]const u8 = "hello\\";
+    const expected_tokens = [_]Token{
+        .{
+            .tag = .literal_text,
+            .loc = .{ .start_index = 0, .end_index = 6 },
+        },
+        .{
+            .tag = .eof,
+            .loc = .{ .start_index = 6, .end_index = 6 }
+        },
+    };
+
+    try expectTokens(buffer, &expected_tokens);
+}
+
+test "text between structural tokens" {
     const buffer: [:0]const u8 = "[hello, world]";
     const expected_tokens = [_]Token{
         .{
@@ -200,28 +270,24 @@ test "inline text between literals" {
     try expectTokens(buffer, &expected_tokens);
 }
 
-test "empty buffer" {
-    const buffer: [:0]const u8 = "";
-    const expected_tokens = [_]Token{
-        .{
-            .tag = .eof,
-            .loc = .{ .start_index = 0, .end_index = 0 },
-        }
-    };
-
-    try expectTokens(buffer, &expected_tokens);
-}
-
-test "whitespace buffer" {
-    const buffer: [:0]const u8 = " ";
+test "structural token between text" {
+    const buffer: [:0]const u8 = "hello*world";
     const expected_tokens = [_]Token{
         .{
             .tag = .literal_text,
-            .loc = .{ .start_index = 0, .end_index = 1 },
+            .loc = .{ .start_index = 0, .end_index = 5 }
+        },
+        .{
+            .tag = .asterisk,
+            .loc = .{ .start_index = 5, .end_index = 6 }
+        },
+        .{
+            .tag = .literal_text,
+            .loc = .{ .start_index = 6, .end_index = 11 }
         },
         .{
             .tag = .eof,
-            .loc = .{ .start_index = 1, .end_index = 1},
+            .loc = .{ .start_index = 11, .end_index = 11 }
         }
     };
 
