@@ -1,27 +1,30 @@
 const std = @import("std");
 const Token = @import("../Tokenizer.zig").Token;
-const Allocator = std.mem.Allocator;
+
+const allocator = std.testing.allocator;
+
+pub fn tok(tag: Token.Tag, len: usize) *SourceBuilder {
+    const builder = allocator.create(SourceBuilder) catch unreachable;
+    builder.* = .{
+        .tokens = std.ArrayList(Token).init(allocator)
+    };
+
+    return builder.tok(tag, len);
+}
+
+pub fn free(source: []Token) void {
+    std.testing.allocator.free(source);
+}
 
 pub const SourceBuilder = struct {
-    allocator: Allocator,
     tokens: std.ArrayList(Token),
-
-    pub fn init(allocator: Allocator) !*SourceBuilder {
-        const self = try allocator.create(SourceBuilder);
-        self.* = .{
-            .allocator = allocator,
-            .tokens = std.ArrayList(Token).init(allocator)
-        };
-
-        return self;
-    }
 
     pub fn deinit(self: *SourceBuilder) void {
         self.tokens.deinit();
         self.allocator.destroy(self);
     }
 
-    pub fn make(self: *SourceBuilder, tag: Token.Tag, len: usize) *SourceBuilder {
+    pub fn tok(self: *SourceBuilder, tag: Token.Tag, len: usize) *SourceBuilder {
         var start_index: usize = 0;
         if (self.tokens.items.len > 0) {
             start_index = self.tokens.items[0].loc.start_index;
@@ -33,13 +36,14 @@ pub const SourceBuilder = struct {
                 .start_index = start_index,
                 .end_index = start_index + len,
             }
-        }) catch {
-        };
+        }) catch unreachable;
 
         return self;
     }
 
-    pub fn build(self: *SourceBuilder) []Token {
-        return self.tokens.items;
+    pub fn eof(self: *SourceBuilder) []Token {
+        _ = self.tok(.eof, 0);
+        const source = self.tokens.toOwnedSlice() catch unreachable;
+        return source;
     }
 };
