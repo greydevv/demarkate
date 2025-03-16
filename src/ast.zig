@@ -17,7 +17,9 @@ pub const Element = union(Element.Type) {
 
         pub const Tag = enum {
             heading,
-            code
+            code,
+            italic,
+            bold
         };
 
         pub fn deinit(self: *Node) void {
@@ -36,6 +38,7 @@ pub const Element = union(Element.Type) {
         pub const Tag = enum {
             text,
             line_break,
+            inline_code
         };
     };
 
