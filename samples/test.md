@@ -9,4 +9,4 @@ pub fn main() !void {
 }
 ```
 
-Some text to finish off.
+And `here's some inline code.`

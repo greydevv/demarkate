@@ -65,7 +65,7 @@ fn printAst(allocator: Allocator, el: *const Element, depth: u32, tokenizer: *co
             }
         },
         .leaf => |leaf| {
-            if (leaf.tag == .text) {
+            if (leaf.tag == .text or leaf.tag == .code_literal) {
                 const token = &leaf.token;
                 std.debug.print("{s}- {s} ({s})\n", .{
                     indent,
