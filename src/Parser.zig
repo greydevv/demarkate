@@ -35,7 +35,7 @@ pub fn init(allocator: Allocator, tokens: []const Token) Parser {
         .tokens = tokens,
         .tok_i = 0,
         // TODO: use assume capacity strategy that zig uses, ((tokens.len + 2) / 2),
-        // but tailor it to markdown.
+        // but modified for markdown ratio
         .elements = std.ArrayList(Element).init(allocator),
         .errors = std.ArrayList(Error).init(allocator),
     };
@@ -106,27 +106,20 @@ fn parseInlineCode(self: *Parser) !Element {
         switch (token.tag) {
             .eof => return self.err(.unterminated_inline_code, open_backtick_token),
             .newline => return self.err(.unexpected_token, token),
-            else => {}
+            else => {
+                if (token.tag == .backtick and token.len() == open_backtick_token.len()) {
+                    _ = self.eatToken();
+                    break;
+                }
+
+                const child = Element.initLeaf(.code_literal, token);
+                try code_el.addChild(child);
+                _ = self.eatToken();
+            },
         }
     }
-    // const code_token = self.eatLineOfCode(open_backtick_token);
-    //
-    // const token = self.tokens[self.tok_i];
-    // switch (token.tag) {
-    //     .eof => return self.err(.unterminated_inline_code, open_backtick_token),
-    //     .newline => return self.err(.unexpected_token, token),
-    //     .backtick => {
-    //         if (self.tokens[self.tok_i].tag == .backtick) {
-    //             _ = self.eatToken();
-    //         } else {
-    //             return self.err(.unexpected_token, self.tokens[self.tok_i]);
-    //         }
-    //     },
-    //     else => unreachable
-    // }
-    //
-    //
-    // return Element.initLeaf(.inline_code, code_token);
+
+    return code_el;
 }
 
 fn parseBlockCode(self: *Parser) !Element {
@@ -140,52 +133,32 @@ fn parseBlockCode(self: *Parser) !Element {
 
     while (true) {
         const token = self.tokens[self.tok_i];
-
         switch (token.tag) {
-            .backtick => {
-                if (token.len() == open_backtick_token.len()) {
-                    _ = self.eatToken();
-                    break;
-                }
-            },
-            .eof => {
-                return self.err(.unterminated_block_code, open_backtick_token);
-            },
-            else => {}
-        }
-
-        switch (token.tag) {
+            .eof => return self.err(.unterminated_block_code, open_backtick_token),
             .newline => {
-                const line_break = try self.eatLineBreak();
-                try code_el.addChild(line_break);
+                const child = Element.initLeaf(.line_break, token);
+                try code_el.addChild(child);
+                _ = self.eatToken();
             },
             else => {
-                const line = self.eatLineOfCode(open_backtick_token);
-                try code_el.addChild(line);
+                if (token.tag == .backtick and token.len() == open_backtick_token.len()) {
+                    const previous_token = self.tokens[self.tok_i - 1];
+                    if (previous_token.tag == .newline) {
+                        _ = self.eatToken();
+                        break;
+                    } else {
+                        return self.err(.no_line_break_before_block_code, token);
+                    }
+                }
+
+                const child = Element.initLeaf(.code_literal, token);
+                try code_el.addChild(child);
+                _ = self.eatToken();
             }
         }
     }
 
     return code_el;
-}
-
-fn eatLineOfCode(self: *Parser, open_backtick: Token) Element {
-    var result_token = Token{
-        .tag = .literal_text,
-        .loc = self.tokens[self.tok_i].loc
-    };
-
-    while (true) {
-        const token = self.tokens[self.tok_i];
-        if (token.tag == .newline or token.tag == .eof or (token.tag == .backtick and token.len() == open_backtick.len())) {
-            break;
-        } else {
-            const consumed_token = self.eatToken();
-            result_token.loc.end_index = consumed_token.loc.end_index;
-        }
-    }
-
-    return Element.initLeaf(.text, result_token);
 }
 
 fn eatLineBreak(self: *Parser) !Element {
@@ -268,62 +241,11 @@ fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemo
 
 const source_builder = @import("testing/source_builder.zig");
 
-test "fails on invalid code block" {
-    // const builder = SourceBuilder.init(std.testing.allocator);
-    // defer builder.deinit();
-    // const source = builder
-    //     .tok(.backtick, 4)
-    //     .eof();
-    //
-    // var parser = Parser.init(
-    //     std.testing.allocator,
-    //     source,
-    // );
-    // defer parser.deinit();
-    //
-    // const result = parser.parse();
-    // try std.testing.expectError(error.ParseError, result);
-    //
-    // const e = parser.errors.items[0];
-    // try std.testing.expectEqual(e.tag, .invalid_number_of_backticks);
-}
-
-// test "fails on empty inline code" {
-//     const builder = SourceBuilder.init(std.testing.allocator);
-//     defer builder.deinit();
-//     const source = builder
-//         .tok(.backtick, 2)
-//         .eof();
-//
-//     var parser = Parser.init(
-//         std.testing.allocator,
-//         source,
-//     );
-//     defer parser.deinit();
-//
-//     const result = parser.parse();
-//     try std.testing.expectError(error.ParseError, result);
-//
-//     const e = parser.errors.items[0];
-//     try std.testing.expectEqual(e.tag, .empty_inline_code);
-// }
-
-test "fails on empty code block" {
+test "fails on unterminated block code" {
     const source = source_builder
         .tok(.backtick, 3)
         .eof();
-
     defer source_builder.free(source);
-
-    std.debug.print("{}\n", .{ source.len });
-
-    // const builder = SourceBuilder.init(std.testing.allocator);
-    // defer builder.deinit();
-    // const source = builder
-    //     .tok(.backtick, 3)
-    //     .tok(.newline, 1)
-    //     .tok(.backtick, 3)
-    //     .eof();
 
     var parser = Parser.init(
         std.testing.allocator,
@@ -335,26 +257,24 @@ test "fails on empty code block" {
     try std.testing.expectError(error.ParseError, result);
 
     const e = parser.errors.items[0];
-    try std.testing.expectEqual(e.tag, .empty_block_code);
+    try std.testing.expectEqual(e.tag, .unterminated_block_code);
 }
 
-// test "fails on unterminated inline code" {
-//     const builder = SourceBuilder.init(std.testing.allocator);
-//     defer builder.deinit();
-//     const source = builder
-//         .tok(.backtick, 1)
-//         .tok(.newline, 1)
-//         .eof();
-//
-//     var parser = Parser.init(
-//         std.testing.allocator,
-//         source
-//     );
-//     defer parser.deinit();
-//
-//     const result = parser.parse();
-//     try std.testing.expectError(error.ParseError, result);
-//
-//     const e = parser.errors.items[0];
-//     try std.testing.expectEqual(e.tag, .empty_block_code);
-// }
+test "fails on unterminated inline code" {
+    const source = source_builder
+        .tok(.backtick, 1)
+        .eof();
+    defer source_builder.free(source);
+
+    var parser = Parser.init(
+        std.testing.allocator,
+        source
+    );
+    defer parser.deinit();
+
+    const result = parser.parse();
+    try std.testing.expectError(error.ParseError, result);
+
+    const e = parser.errors.items[0];
+    try std.testing.expectEqual(e.tag, .unterminated_inline_code);
+}

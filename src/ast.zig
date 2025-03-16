@@ -37,6 +37,7 @@ pub const Element = union(Element.Type) {
 
         pub const Tag = enum {
             text,
+            code_literal,
             line_break,
             inline_code
         };
