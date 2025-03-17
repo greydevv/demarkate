@@ -13,6 +13,7 @@ pub const Token = struct {
         backtick,
         asterisk,
         underscore,
+        tilde,
         bang,
         close_angle,
         open_bracket,
@@ -90,6 +91,10 @@ fn nextStructural(self: *Tokenizer) ?Token {
         },
         '_' => {
             token.tag = .underscore;
+            self.index += 1;
+        },
+        '~' => {
+            token.tag = .tilde;
             self.index += 1;
         },
         '`' => {
