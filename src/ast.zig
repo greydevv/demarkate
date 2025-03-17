@@ -21,7 +21,8 @@ pub const Element = union(Element.Type) {
             heading,
             code,
             italic,
-            bold
+            bold,
+            strikethrough
         };
 
         pub fn deinit(self: *const Node) void {
