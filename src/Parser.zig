@@ -24,6 +24,66 @@ pub const Error = struct {
         empty_inline_code,
         unterminated_inline_code,
     };
+
+    pub fn allocMsg(self: *const Error, allocator: Allocator) ![]const u8 {
+        const tag = self.tag;
+        const token = self.token;
+
+        const msg = switch(tag) {
+            .unexpected_token =>
+                std.fmt.allocPrint(
+                    allocator,
+                    "Unexpected token ({s}) from {} to {}", .{
+                        @tagName(token.tag),
+                        token.loc.start_index,
+                        token.loc.end_index
+                    }
+                ),
+            .invalid_token =>
+                std.fmt.allocPrint(
+                    allocator,
+                    "Invalid token ({s}) from {} to {}", .{
+                        @tagName(token.tag),
+                        token.loc.start_index,
+                        token.loc.end_index
+                    }
+                ),
+            .unterminated_modifier =>
+                std.fmt.allocPrint(
+                    allocator,
+                    "Unterminated inline modifier ({s})", .{
+                        @tagName(token.tag)
+                    }
+                ),
+            .no_line_break_before_block_code =>
+                std.fmt.allocPrint(
+                    allocator,
+                    "No line break before code block", .{}
+                ),
+            .empty_block_code =>
+                std.fmt.allocPrint(
+                    allocator,
+                    "Empty code block", .{}
+                ),
+            .unterminated_block_code =>
+                std.fmt.allocPrint(
+                    allocator,
+                    "Unterminated code block", .{}
+                ),
+            .empty_inline_code =>
+                std.fmt.allocPrint(
+                    allocator,
+                    "Empty inline code", .{}
+                ),
+            .unterminated_inline_code =>
+                std.fmt.allocPrint(
+                    allocator,
+                    "Unterminated inline code", .{}
+                ),
+        };
+
+        return msg;
+    }
 };
 
 allocator: Allocator,
@@ -64,21 +124,21 @@ pub fn parse(self: *Parser) !void {
                 }
 
                 _ = self.eatToken();
-                const inline_el = try self.eatText();
-                const line_break = try self.eatLineBreak();
 
-                var heading = Element.initNode(self.allocator, .heading);
+                var heading = Element{
+                    .node = .{
+                        .children = try self.parseInlineUntilLineBreakOrEof(),
+                        .tag = .heading
+                    }
+                };
                 errdefer heading.deinit();
 
-                _ = try heading.addChild(inline_el);
+                const line_break = try self.eatLineBreak();
                 _ = try heading.addChild(line_break);
 
                 break :blk heading;
             },
             .newline => try self.eatLineBreak(),
-            .literal_text => try self.eatText(),
-            .underscore => try self.parseInlineModifier(.italic),
-            .asterisk => try self.parseInlineModifier(.bold),
             .backtick =>
                 switch (token.len()) {
                     1 => try self.parseInlineCode(),
@@ -88,12 +148,16 @@ pub fn parse(self: *Parser) !void {
                     else => return self.err(.invalid_token, token),
                 },
             .eof => return,
-            else => {
-                // skip token (for now)
-                std.log.warn("Unhandled token ({s})", .{ @tagName(token.tag) });
-                _ = self.eatToken();
-                continue;
-            },
+            else => try self.parseInline(),
+            // else => blk: {
+            //     const inline_el = self.parseInline() catch {
+            //         std.log.warn("Unhandled token ({s})", .{ @tagName(token.tag) });
+            //         _ = self.eatToken();
+            //         continue;
+            //     };
+            //
+            //     break :blk inline_el;
+            // },
         };
 
         try self.elements.append(el);
@@ -186,6 +250,48 @@ fn eatText(self: *Parser) !Element {
     return Element.initLeaf(.text, token);
 }
 
+fn parseInlineUntilLineBreakOrEof(self: *Parser) !Element.Node.Children {
+    var children = Element.Node.Children.init(self.allocator);
+    errdefer children.deinit();
+
+    var token = self.tokens[self.tok_i];
+    while (token.tag != .newline and token.tag != .eof) {
+        const child = try self.parseInline();
+        try children.append(child);
+        token = self.tokens[self.tok_i];
+    }
+
+    return children;
+}
+
+fn parseInline(self: *Parser) !Element {
+    const token = self.tokens[self.tok_i];
+    switch (token.tag) {
+        .asterisk => return self.parseInlineModifier(.bold),
+        .underscore => return self.parseInlineModifier(.italic),
+        .tilde => return self.parseInlineModifier(.strikethrough),
+        else => return self.parseTerminalInline(),
+    }
+}
+
+/// Parse tokens into AST nodes representing terminal content.
+///
+/// The returned nodes are always terminal nodes (leaves).
+fn parseTerminalInline(self: *Parser) !Element {
+    const token = self.tokens[self.tok_i];
+    switch (token.tag) {
+        .literal_text => return self.eatText(),
+        .backtick => {
+            if (token.len() == 1) {
+                return try self.parseInlineCode();
+            } else {
+                unreachable;
+            }
+        },
+        else => return self.err(.unexpected_token, token)
+    }
+}
+
 fn parseInlineModifier(self: *Parser, node_tag: Element.Node.Tag) !Element {
     // TODO: throw error if closing modifier starts on newline, but opening doesn't
     // (and vice-versa)
@@ -210,7 +316,8 @@ fn parseInlineModifier(self: *Parser, node_tag: Element.Node.Tag) !Element {
 
         switch (token.tag) {
             .asterisk,
-            .underscore => |tag| {
+            .underscore,
+            .tilde => |tag| {
                 const modifier_tag = elementTagFromTokenTag(tag);
                 const modifier_token = self.eatToken();
 
@@ -245,7 +352,7 @@ fn parseInlineModifier(self: *Parser, node_tag: Element.Node.Tag) !Element {
             },
             .newline,
             .eof => return self.err(.unterminated_modifier, token_stack.getLast()),
-            else => unreachable
+            else => return self.parseTerminalInline()
         }
     }
 
@@ -256,6 +363,7 @@ fn elementTagFromTokenTag(tag: Token.Tag) Element.Node.Tag {
     switch (tag) {
         .asterisk => return .bold,
         .underscore => return .italic,
+        .tilde => return .strikethrough,
         else => unreachable
     }
 }
@@ -270,50 +378,6 @@ fn eatToken(self: *Parser) Token {
 }
 
 fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemory } {
-    switch(tag) {
-        .unexpected_token =>
-            std.log.err(
-                "Unexpected token ({s}) from {} to {}", .{
-                    @tagName(token.tag),
-                    token.loc.start_index,
-                    token.loc.end_index 
-                }
-            ),
-        .invalid_token =>
-            std.log.err(
-                "Invalid token ({s}) from {} to {}", .{
-                    @tagName(token.tag),
-                    token.loc.start_index,
-                    token.loc.end_index 
-                }
-            ),
-        .unterminated_modifier =>
-            std.log.err(
-                "Unterminated inline modifier ({s})", .{
-                    @tagName(token.tag)
-                }
-            ),
-        .no_line_break_before_block_code =>
-            std.log.err(
-                "No line break before code block", .{}
-            ),
-        .empty_block_code =>
-            std.log.err(
-                "Empty code block", .{}
-            ),
-        .unterminated_block_code =>
-            std.log.err(
-                "Unterminated code block", .{}
-            ),
-        .empty_inline_code =>
-            std.log.err(
-                "Empty inline code", .{}
-            ),
-        .unterminated_inline_code =>
-            std.log.err(
-                "Unterminated inline code", .{}
-            ),
-    }
 
     try self.errors.append(.{
         .tag = tag,
@@ -326,27 +390,75 @@ fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemo
 const source_builder = @import("testing/source_builder.zig");
 
 test "fails on unterminated block code" {
+    // "```"
+    //  ^~~
     const source = source_builder
         .tok(.backtick, 3)
         .eof();
     defer source_builder.free(source);
 
-    var parser = Parser.init(
-        std.testing.allocator,
-        source
+    try expectError(
+        source,
+        .unterminated_block_code,
+        source[0],
     );
-    defer parser.deinit();
-
-    const result = parser.parse();
-    try std.testing.expectError(error.ParseError, result);
-
-    const e = parser.errors.items[0];
-    try std.testing.expectEqual(e.tag, .unterminated_block_code);
 }
 
 test "fails on unterminated inline code" {
+    // "`"
+    //  ^
     const source = source_builder
         .tok(.backtick, 1)
+        .eof();
+    defer source_builder.free(source);
+
+    try expectError(
+        source,
+        .unterminated_inline_code,
+        source[0],
+    );
+}
+
+test "fails on unterminated modifier" {
+    // "*"
+    //  ^
+    const source = source_builder
+        .tok(.asterisk, 1)
+        .eof();
+    defer source_builder.free(source);
+
+    try expectError(
+        source,
+        .unterminated_modifier,
+        source[0]
+    );
+}
+
+test "fails on unterminated nested modifier" {
+    // "*_*"
+    //    ^ 
+    const source = source_builder
+        .tok(.asterisk, 1)
+        .tok(.underscore, 1)
+        .tok(.asterisk, 1)
+        .eof();
+    defer source_builder.free(source);
+
+    try expectError(
+        source,
+        .unterminated_modifier,
+        source[2],
+    );
+}
+
+test "parses modifier" {
+    // "a*a*a"
+    const source = source_builder
+        .tok(.literal_text, 1)
+        .tok(.asterisk, 1)
+        .tok(.literal_text, 1)
+        .tok(.asterisk, 1)
+        .tok(.literal_text, 1)
         .eof();
     defer source_builder.free(source);
 
@@ -356,9 +468,48 @@ test "fails on unterminated inline code" {
     );
     defer parser.deinit();
 
+    _ = try parser.parse();
+
+    try std.testing.expectEqual(0, parser.errors.items.len);
+    try std.testing.expectEqual(3, parser.elements.items.len);
+}
+
+test "parses nested modifiers" {
+    // "a_*a*_a"
+    const source = source_builder
+        .tok(.literal_text, 5)
+        .tok(.underscore, 1)
+        .tok(.asterisk, 1)
+        .tok(.literal_text, 2)
+        .tok(.asterisk, 1)
+        .tok(.underscore, 1)
+        .tok(.literal_text, 6)
+        .eof();
+    defer source_builder.free(source);
+
+    var parser = Parser.init(
+        std.testing.allocator,
+        source
+    );
+    defer parser.deinit();
+
+    _ = try parser.parse();
+
+    try std.testing.expectEqual(0, parser.errors.items.len);
+    try std.testing.expectEqual(3, parser.elements.items.len);
+}
+
+fn expectError(source: []const Token, expected_err: Error.Tag, expected_token: Token) !void {
+    var parser = Parser.init(
+        std.testing.allocator,
+        source
+    );
+    defer parser.deinit();
+
     const result = parser.parse();
     try std.testing.expectError(error.ParseError, result);
 
     const e = parser.errors.items[0];
-    try std.testing.expectEqual(e.tag, .unterminated_inline_code);
+    try std.testing.expectEqual(e.tag, expected_err);
+    try std.testing.expectEqual(e.token, expected_token);
 }
