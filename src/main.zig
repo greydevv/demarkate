@@ -29,7 +29,15 @@ pub fn main() !void {
 
     var parser = Parser.init(allocator, tokens.items);
     defer parser.deinit();
-    try parser.parse();
+
+    parser.parse() catch {
+        for (parser.errors.items) |e| {
+            const msg = try e.allocMsg(allocator);
+            defer allocator.free(msg);
+
+            std.log.err("{s}", .{ msg });
+        }
+    };
 
     for (parser.elements.items) |el| {
         try printAst(allocator, &el, 0, &tokenizer);
