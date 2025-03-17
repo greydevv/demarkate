@@ -59,5 +59,5 @@ I am *bold*.
 
 ### Strikethrough
 ```text
-I am ~finishsed~.
+I am ~struck through~(?).
 ```
