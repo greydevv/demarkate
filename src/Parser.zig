@@ -388,6 +388,7 @@ fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemo
 }
 
 const source_builder = @import("testing/source_builder.zig");
+const ast_builder = @import("testing/ast_builder.zig");
 
 test "fails on unterminated block code" {
     // "```"
@@ -475,17 +476,26 @@ test "parses modifier" {
 }
 
 test "parses nested modifiers" {
-    // "a_*a*_a"
+    // "_*a*_"
     const source = source_builder
-        .tok(.literal_text, 5)
         .tok(.underscore, 1)
         .tok(.asterisk, 1)
-        .tok(.literal_text, 2)
+        .tok(.literal_text, 1)
         .tok(.asterisk, 1)
         .tok(.underscore, 1)
-        .tok(.literal_text, 6)
         .eof();
     defer source_builder.free(source);
+
+    const expected_ast = ast_builder
+        .node(.italic,
+            .node(.bold, ast_builder
+                .leaf(.text, source[3])
+                .build()
+            )
+            .build()
+        )
+        .build();
+    defer ast_builder.free(expected_ast);
 
     var parser = Parser.init(
         std.testing.allocator,
@@ -496,7 +506,7 @@ test "parses nested modifiers" {
     _ = try parser.parse();
 
     try std.testing.expectEqual(0, parser.errors.items.len);
-    try std.testing.expectEqual(3, parser.elements.items.len);
+    try ast_builder.expectEqual(expected_ast, parser.elements);
 }
 
 fn expectError(source: []const Token, expected_err: Error.Tag, expected_token: Token) !void {
