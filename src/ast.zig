@@ -71,6 +71,7 @@ pub const Element = union(Element.Type) {
         }
     }
 
+    /// Add a child element and obtain a pointer to it.
     pub fn addChild(self: *Element, child: Element) !*Element {
         switch (self.*) {
             .node => |*n| {
