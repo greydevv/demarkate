@@ -1,74 +1,108 @@
 const std = @import("std");
+const Token = @import("../Tokenizer.zig").Token;
 const Element = @import("../ast.zig").Element;
 
 const allocator = std.testing.allocator;
 
-pub fn node(tag: Element.Node.Tag) *AstBuilder {
+pub fn node(tag: Element.Node.Tag, children: std.ArrayList(Element)) *AstBuilder {
     const builder = allocator.create(AstBuilder) catch unreachable;
     builder.* = .{
-        .elements = std.ArrayList(Element).init(allocator),
-        .last_el = undefined,
+        .elements = std.ArrayList(Element).init(allocator)
     };
 
-    builder.elements.append(
-        Element.initNode(allocator, tag)
-    ) catch unreachable;
+    builder.elements.append(.{
+        .node = .{
+            .tag = tag,
+            .children = children
+        }
+    }) catch unreachable;
 
-    builder.last_el = &builder.elements.items[0];
-
-    return builder.node(tag);
+    return builder;
 }
 
-pub fn free(elements: []Element) void {
-    allocator.free(elements);
+pub fn leaf(tag: Element.Leaf.Tag, token: Token) *AstBuilder {
+    const builder = allocator.create(AstBuilder) catch unreachable;
+    builder.* = .{
+        .elements = std.ArrayList(Element).init(allocator)
+    };
+
+    builder.elements.append(.{
+        .leaf = .{
+            .tag = tag,
+            .token = token
+        }
+    }) catch unreachable;
+
+    return builder;
+}
+
+pub fn free(ast: std.ArrayList(Element)) void {
+    for (ast.items) |el| {
+        switch (el) {
+            .node => |n| free(n.children),
+            .leaf => continue,
+        }
+    }
+
+    ast.deinit();
 }
 
 pub const AstBuilder = struct {
     elements: std.ArrayList(Element),
-    last_el: *Element,
 
-    pub fn deinit(self: *AstBuilder) void {
-        self.elements.deinit();
+    fn deinit(self: *AstBuilder) void {
         allocator.destroy(self);
     }
 
-    pub fn node(self: *AstBuilder, e: Element) *AstBuilder {
-        self.element(e);
+    pub fn node(self: *AstBuilder, tag: Element.Node.Tag, children: std.ArrayList(Element)) *AstBuilder {
+        self.elements.append(.{
+            .node = .{
+                .tag = tag,
+                .children = children
+            }
+        }) catch unreachable;
 
         return self;
     }
 
-    pub fn leaf(self: *AstBuilder, tag: Element.Leaf.Tag) *AstBuilder {
-        const child = Element.initLeaf(tag);
-        self.element(child);
+    pub fn leaf(self: *AstBuilder, tag: Element.Leaf.Tag, token: Token) *AstBuilder {
+        self.elements.append(.{
+            .leaf = .{
+                .tag = tag,
+                .token = token
+            }
+        }) catch unreachable;
 
         return self;
     }
 
-    pub fn childNode(self: *AstBuilder, tag: Element.Node.Tag) *AstBuilder {
-        const child = Element.initNode(tag);
-        _ = self.last_el.addChild(child) catch unreachable;
-
-        return self;
-    }
-    
-    pub fn childLeaf(self: *AstBuilder, tag: Element.Leaf.Tag) *AstBuilder {
-        const child = Element.initLeaf(tag);
-        _ = self.last_el.addChild(child) catch unreachable;
-
-        return self;
-    }
-
-    pub fn build(self: *AstBuilder) []Element {
-        const elements = self.elements.toOwnedSlice() catch unreachable;
-        self.deinit();
-        return elements;
-    }
-
-    fn element(self: *AstBuilder, e: Element) void {
-        self.elements.append(e) catch unreachable;
-        self.last_el = &self.elements.items[self.elements.items.len - 1];
+    pub fn build(self: *AstBuilder) std.ArrayList(Element) {
+        defer self.deinit();
+        return self.elements;
     }
 };
 
+pub fn expectEqual(expected: std.ArrayList(Element), actual: std.ArrayList(Element)) !void {
+    if (expected.items.len != actual.items.len) {
+        return error.TestExpectedEqual;
+    }
 
+    for (expected.items, actual.items) |a, b| {
+        switch (a) {
+            .node => |expected_node| {
+                const actual_node = b.node;
+                if (expected_node.tag != actual_node.tag) {
+                    return error.TestExpectedEqual;
+                }
+
+                return expectEqual(expected_node.children, actual_node.children);
+            },
+            .leaf => |expected_leaf| {
+                const actual_leaf = b.leaf;
+                if (!std.meta.eql(expected_leaf, actual_leaf)) {
+                    return error.TestExpectedEqual;
+                }
+            }
+        }
+    }
+}
