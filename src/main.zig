@@ -37,6 +37,7 @@ pub fn main() !void {
 
             std.log.err("{s}", .{ msg });
         }
+        return;
     };
 
     for (parser.elements.items) |el| {
