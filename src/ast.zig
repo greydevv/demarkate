@@ -97,4 +97,3 @@ pub const Element = union(Element.Type) {
         }
     }
 };
-
