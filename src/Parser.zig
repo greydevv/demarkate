@@ -127,25 +127,15 @@ pub fn parse(self: *Parser) !void {
                 break :blk heading;
             },
             .newline => try self.eatLineBreak(),
-            .backtick =>
-                switch (token.len()) {
-                    1 => try self.parseInlineCode(),
-                    2 => return self.err(.empty_inline_code, token),
-                    3 => try self.parseBlockCode(),
-                    6 => return self.err(.empty_block_code, token),
-                    else => return self.err(.invalid_token, token),
-                },
+            .backtick => blk: {
+                if (token.len() == 3) {
+                    break :blk try self.parseBlockCode();
+                } else {
+                    break :blk try self.parseInline();
+                }
+            },
             .eof => return,
             else => try self.parseInline(),
-            // else => blk: {
-            //     const inline_el = self.parseInline() catch {
-            //         std.log.warn("Unhandled token ({s})", .{ @tagName(token.tag) });
-            //         _ = self.eatToken();
-            //         continue;
-            //     };
-            //
-            //     break :blk inline_el;
-            // },
         };
 
         try self.elements.append(el);
@@ -164,9 +154,13 @@ fn parseInlineCode(self: *Parser) !Element {
             .eof => return self.err(.unterminated_inline_code, open_backtick_token),
             .newline => return self.err(.unexpected_token, token),
             else => {
-                if (token.tag == .backtick and token.len() == open_backtick_token.len()) {
-                    _ = self.eatToken();
-                    break;
+                if (token.tag == .backtick) {
+                    if (token.len() == open_backtick_token.len()) {
+                        _ = self.eatToken();
+                        break;
+                    } else {
+                        return self.err(.unexpected_token, token);
+                    }
                 }
 
                 const child = Element.initLeaf(.code_literal, token);
@@ -252,30 +246,32 @@ fn parseInlineUntilLineBreakOrEof(self: *Parser) !Element.Node.Children {
     return children;
 }
 
+/// Parses top-level inline elements.
 fn parseInline(self: *Parser) !Element {
     const token = self.tokens[self.tok_i];
     switch (token.tag) {
-        .asterisk => return self.parseInlineModifier(.bold),
-        .underscore => return self.parseInlineModifier(.italic),
-        .tilde => return self.parseInlineModifier(.strikethrough),
+        .asterisk,
+        .underscore,
+        .tilde => |tag| {
+            const modifier_tag = elementTagFromTokenTag(tag);
+            return self.parseInlineModifier(modifier_tag);
+        },
         else => return self.parseTerminalInline(),
     }
 }
 
-/// Parse tokens into AST nodes representing terminal content.
-///
-/// The returned nodes are always terminal nodes (leaves).
+/// A variant of parseInline that does not recurse.
 fn parseTerminalInline(self: *Parser) !Element {
     const token = self.tokens[self.tok_i];
     switch (token.tag) {
-        .literal_text => return self.eatText(),
         .backtick => {
             if (token.len() == 1) {
-                return try self.parseInlineCode();
+                return self.parseInlineCode();
             } else {
-                unreachable;
+                return self.err(.unexpected_token, token);
             }
         },
+        .literal_text => return self.eatText(),
         else => return self.err(.unexpected_token, token)
     }
 }
@@ -309,7 +305,9 @@ fn parseInlineModifier(self: *Parser, node_tag: Element.Node.Tag) !Element {
                 const modifier_tag = elementTagFromTokenTag(tag);
                 const modifier_token = self.eatToken();
 
-                if (tag_stack.getLast() == modifier_tag) {
+                const tags_equal = tag_stack.getLast() == modifier_tag;
+                const len_equal = token_stack.getLast().len() == modifier_token.len();
+                if (tags_equal and len_equal) {
                     // modifier closed, pop from stack
                     _ = el_stack.pop();
                     _ = tag_stack.pop();
@@ -326,8 +324,6 @@ fn parseInlineModifier(self: *Parser, node_tag: Element.Node.Tag) !Element {
 
                     top_of_stack = new_top;
 
-                    // TODO: need errdefer here?
-
                     // modifier opened, push onto stack
                     try el_stack.append(new_top);
                     try tag_stack.append(modifier_tag);
@@ -340,7 +336,10 @@ fn parseInlineModifier(self: *Parser, node_tag: Element.Node.Tag) !Element {
             },
             .newline,
             .eof => return self.err(.unterminated_modifier, token_stack.getLast()),
-            else => return self.parseTerminalInline()
+            else => {
+                const el = try self.parseTerminalInline();
+                _ = try top_of_stack.addChild(el);
+            }
         }
     }
 
@@ -348,12 +347,12 @@ fn parseInlineModifier(self: *Parser, node_tag: Element.Node.Tag) !Element {
 }
 
 fn elementTagFromTokenTag(tag: Token.Tag) Element.Node.Tag {
-    switch (tag) {
-        .asterisk => return .bold,
-        .underscore => return .italic,
-        .tilde => return .strikethrough,
+    return switch (tag) {
+        .asterisk => .bold,
+        .underscore => .italic,
+        .tilde => .strikethrough,
         else => unreachable
-    }
+    };
 }
 
 fn eatToken(self: *Parser) Token {
@@ -375,14 +374,9 @@ fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemo
     return error.ParseError;
 }
 
-const source_builder = @import("testing/source_builder.zig");
-const ast_builder = @import("testing/ast_builder.zig");
-
 test "fails on unterminated block code" {
-    // "```"
-    //  ^~~
     const source = source_builder
-        .tok(.backtick, 3)
+        .tok(.backtick, "```")
         .eof();
     defer source_builder.free(source);
 
@@ -394,10 +388,8 @@ test "fails on unterminated block code" {
 }
 
 test "fails on unterminated inline code" {
-    // "`"
-    //  ^
     const source = source_builder
-        .tok(.backtick, 1)
+        .tok(.backtick, "`")
         .eof();
     defer source_builder.free(source);
 
@@ -409,10 +401,8 @@ test "fails on unterminated inline code" {
 }
 
 test "fails on unterminated modifier" {
-    // "*"
-    //  ^
     const source = source_builder
-        .tok(.asterisk, 1)
+        .tok(.asterisk, "*")
         .eof();
     defer source_builder.free(source);
 
@@ -424,12 +414,10 @@ test "fails on unterminated modifier" {
 }
 
 test "fails on unterminated nested modifier" {
-    // "*_*"
-    //    ^ 
     const source = source_builder
-        .tok(.asterisk, 1)
-        .tok(.underscore, 1)
-        .tok(.asterisk, 1)
+        .tok(.asterisk, "*")
+        .tok(.underscore, "_")
+        .tok(.asterisk, "*")
         .eof();
     defer source_builder.free(source);
 
@@ -441,13 +429,12 @@ test "fails on unterminated nested modifier" {
 }
 
 test "parses modifier" {
-    // "a*a*a"
     const source = source_builder
-        .tok(.literal_text, 1)
-        .tok(.asterisk, 1)
-        .tok(.literal_text, 1)
-        .tok(.asterisk, 1)
-        .tok(.literal_text, 1)
+        .tok(.literal_text, "a")
+        .tok(.asterisk, "*")
+        .tok(.literal_text, "a")
+        .tok(.asterisk, "*")
+        .tok(.literal_text, "a")
         .eof();
     defer source_builder.free(source);
 
@@ -464,20 +451,19 @@ test "parses modifier" {
 }
 
 test "parses nested modifiers" {
-    // "_*a*_"
     const source = source_builder
-        .tok(.underscore, 1)
-        .tok(.asterisk, 1)
-        .tok(.literal_text, 1)
-        .tok(.asterisk, 1)
-        .tok(.underscore, 1)
+        .tok(.underscore, "_")
+        .tok(.asterisk, "*")
+        .tok(.literal_text, "a")
+        .tok(.asterisk, "*")
+        .tok(.underscore, "_")
         .eof();
     defer source_builder.free(source);
 
     const expected_ast = ast_builder
-        .node(.italic,
+        .node(.italic, ast_builder
             .node(.bold, ast_builder
-                .leaf(.text, source[3])
+                .leaf(.text, source[2])
                 .build()
             )
             .build()
@@ -496,6 +482,9 @@ test "parses nested modifiers" {
     try std.testing.expectEqual(0, parser.errors.items.len);
     try ast_builder.expectEqual(expected_ast, parser.elements);
 }
+
+const source_builder = @import("testing/source_builder.zig");
+const ast_builder = @import("testing/ast_builder.zig");
 
 fn expectError(source: []const Token, expected_err: Error.Tag, expected_token: Token) !void {
     var parser = Parser.init(
