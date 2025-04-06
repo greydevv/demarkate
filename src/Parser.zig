@@ -151,8 +151,8 @@ fn parseInlineCode(self: *Parser) !Element {
     while (true) {
         const token = self.tokens[self.tok_i];
         switch (token.tag) {
+            .newline,
             .eof => return self.err(.unterminated_inline_code, open_backtick_token),
-            .newline => return self.err(.unexpected_token, token),
             else => {
                 if (token.tag == .backtick) {
                     if (token.len() == open_backtick_token.len()) {
