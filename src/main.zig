@@ -1,12 +1,13 @@
 const std = @import("std");
 const Tokenizer = @import("Tokenizer.zig");
 const Parser = @import("Parser.zig");
+const Renderer = @import("render/html.zig").Renderer;
 
 const File = std.fs.File;
 const Allocator = std.mem.Allocator;
 const Token = Tokenizer.Token;
 
-const sample_file_path = "/Users/gr.murray/Developer/zig/markdown-parser/samples/test.md";
+const sample_file_path = "/Users/gr.murray/Developer/zig/markdown-parser/samples/inline_modifiers.md";
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -37,12 +38,17 @@ pub fn main() !void {
 
             std.log.err("{s}", .{ msg });
         }
+
         return;
     };
 
     for (parser.elements.items) |el| {
         try printAst(allocator, &el, 0, &tokenizer);
     }
+
+
+    const renderer = Renderer.init(allocator, buffer[0..:0]);
+    _ = try renderer.render(parser.elements.items);
 }
 
 fn readFileAlloc(allocator: Allocator, file_path: []const u8) ![:0]u8 {
@@ -87,21 +93,3 @@ fn printAst(allocator: Allocator, el: *const Element, depth: u32, tokenizer: *co
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
