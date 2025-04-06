@@ -28,7 +28,7 @@ pub const SourceBuilder = struct {
     pub fn tok(self: *SourceBuilder, tag: Token.Tag, len: usize) *SourceBuilder {
         var start_index: usize = 0;
         if (self.tokens.items.len > 0) {
-            start_index = self.tokens.items[0].loc.start_index;
+            start_index = self.tokens.getLast().loc.end_index;
         }
 
         self.tokens.append(.{
