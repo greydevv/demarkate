@@ -19,9 +19,7 @@ pub const Error = struct {
         invalid_token,
         unterminated_modifier,
         no_line_break_before_block_code,
-        empty_block_code,
         unterminated_block_code,
-        empty_inline_code,
         unterminated_inline_code,
     };
 
@@ -60,20 +58,10 @@ pub const Error = struct {
                     allocator,
                     "No line break before code block", .{}
                 ),
-            .empty_block_code =>
-                std.fmt.allocPrint(
-                    allocator,
-                    "Empty code block", .{}
-                ),
             .unterminated_block_code =>
                 std.fmt.allocPrint(
                     allocator,
                     "Unterminated code block", .{}
-                ),
-            .empty_inline_code =>
-                std.fmt.allocPrint(
-                    allocator,
-                    "Empty inline code", .{}
                 ),
             .unterminated_inline_code =>
                 std.fmt.allocPrint(
