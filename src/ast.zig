@@ -79,7 +79,7 @@ pub const Element = union(Element.Type) {
                 return &n.children.items[n.children.items.len - 1];
             },
             // TODO: should this be unreachable?
-            .leaf => return error.NotANode,
+            .leaf => unreachable,
         }
     }
 
