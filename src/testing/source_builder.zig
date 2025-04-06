@@ -4,13 +4,27 @@ const Element = @import("../ast.zig").Element;
 
 const allocator = std.testing.allocator;
 
-pub fn tok(tag: Token.Tag, len: usize) *SourceBuilder {
+pub fn tok(tag: Token.Tag, source: []const u8) *SourceBuilder {
     const builder = allocator.create(SourceBuilder) catch unreachable;
     builder.* = .{
         .tokens = std.ArrayList(Token).init(allocator)
     };
 
-    return builder.tok(tag, len);
+    return builder.tok(tag, source);
+}
+
+pub fn eof() []Token {
+    const source = allocator.alloc(Token, 1) catch unreachable;
+
+    source[0] = .{
+        .tag = .eof,
+        .loc = .{
+            .start_index = 0,
+            .end_index = 0,
+        },
+    };
+
+    return source;
 }
 
 pub fn free(source: []Token) void {
@@ -25,7 +39,7 @@ pub const SourceBuilder = struct {
         allocator.destroy(self);
     }
 
-    pub fn tok(self: *SourceBuilder, tag: Token.Tag, len: usize) *SourceBuilder {
+    pub fn tok(self: *SourceBuilder, tag: Token.Tag, source: []const u8) *SourceBuilder {
         var start_index: usize = 0;
         if (self.tokens.items.len > 0) {
             start_index = self.tokens.getLast().loc.end_index;
@@ -35,7 +49,7 @@ pub const SourceBuilder = struct {
             .tag = tag,
             .loc = .{
                 .start_index = start_index,
-                .end_index = start_index + len,
+                .end_index = start_index + source.len,
             }
         }) catch unreachable;
 
@@ -43,7 +57,7 @@ pub const SourceBuilder = struct {
     }
 
     pub fn eof(self: *SourceBuilder) []Token {
-        _ = self.tok(.eof, 0);
+        _ = self.tok(.eof, "");
         const source = self.tokens.toOwnedSlice() catch unreachable;
         self.deinit();
         return source;
