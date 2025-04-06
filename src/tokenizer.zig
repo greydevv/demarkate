@@ -177,128 +177,85 @@ fn literalText(self: *Tokenizer) Token {
 
 test "empty" {
     const buffer: [:0]const u8 = "";
-    const expected_tokens = [_]Token{
-        .{
-            .tag = .eof,
-            .loc = .{ .start_index = 0, .end_index = 0 },
-        }
-    };
 
-    try expectTokens(buffer, &expected_tokens);
+    const expected_tokens = source_builder
+        .eof();
+    defer source_builder.free(expected_tokens);
+
+    try expectTokens(buffer, expected_tokens);
 }
 
 test "whitespace only" {
     const buffer: [:0]const u8 = " ";
-    const expected_tokens = [_]Token{
-        .{
-            .tag = .literal_text,
-            .loc = .{ .start_index = 0, .end_index = 1 },
-        },
-        .{
-            .tag = .eof,
-            .loc = .{ .start_index = 1, .end_index = 1},
-        }
-    };
 
-    try expectTokens(buffer, &expected_tokens);
+    const expected_tokens = source_builder
+        .tok(.literal_text, " ")
+        .eof();
+    defer source_builder.free(expected_tokens);
+
+    try expectTokens(buffer, expected_tokens);
 }
 
 
 test "inline text only" {
     const buffer: [:0]const u8 = "hello, world";
-    const expected_tokens = [_]Token{
-        .{
-            .tag = .literal_text,
-            .loc = .{ .start_index = 0, .end_index = 12 },
-        },
-        .{
-            .tag = .eof,
-            .loc = .{ .start_index = 12, .end_index = 12 }
-        }
-    };
 
-    try expectTokens(buffer, &expected_tokens);
+    const expected_tokens = source_builder
+        .tok(.literal_text, "hello, world")
+        .eof();
+    defer source_builder.free(expected_tokens);
+
+    try expectTokens(buffer, expected_tokens);
 }
 
 test "escape character" {
     const buffer: [:0]const u8 = "hello\\#world";
-    const expected_tokens = [_]Token{
-        .{
-            .tag = .literal_text,
-            .loc = .{ .start_index = 0, .end_index = 12 },
-        },
-        .{
-            .tag = .eof,
-            .loc = .{ .start_index = 12, .end_index = 12 }
-        },
-    };
 
-    try expectTokens(buffer, &expected_tokens);
+    const expected_tokens = source_builder
+        .tok(.literal_text, "hello\\#world")
+        .eof();
+    defer source_builder.free(expected_tokens);
+
+    try expectTokens(buffer, expected_tokens);
 }
 
 test "escape character at eof" {
     const buffer: [:0]const u8 = "hello\\";
-    const expected_tokens = [_]Token{
-        .{
-            .tag = .literal_text,
-            .loc = .{ .start_index = 0, .end_index = 6 },
-        },
-        .{
-            .tag = .eof,
-            .loc = .{ .start_index = 6, .end_index = 6 }
-        },
-    };
 
-    try expectTokens(buffer, &expected_tokens);
+    const expected_tokens = source_builder
+        .tok(.literal_text, "hello\\")
+        .eof();
+    defer source_builder.free(expected_tokens);
+
+    try expectTokens(buffer, expected_tokens);
 }
 
 test "text between structural tokens" {
     const buffer: [:0]const u8 = "[hello, world]";
-    const expected_tokens = [_]Token{
-        .{
-            .tag = .open_bracket,
-            .loc = .{ .start_index = 0, .end_index = 1 },
-        },
-        .{
-            .tag = .literal_text,
-            .loc = .{ .start_index = 1, .end_index = 13 }
-        },
-        .{
-            .tag = .close_bracket,
-            .loc = .{ .start_index = 13, .end_index = 14 }
-        },
-        .{
-            .tag = .eof,
-            .loc = .{ .start_index = 14, .end_index = 14 }
-        }
-    };
+    const expected_tokens = source_builder
+        .tok(.open_bracket, "[")
+        .tok(.literal_text, "hello, world")
+        .tok(.close_bracket, "]")
+        .eof();
+    defer source_builder.free(expected_tokens);
 
-    try expectTokens(buffer, &expected_tokens);
+    try expectTokens(buffer, expected_tokens);
 }
 
 test "structural token between text" {
     const buffer: [:0]const u8 = "hello*world";
-    const expected_tokens = [_]Token{
-        .{
-            .tag = .literal_text,
-            .loc = .{ .start_index = 0, .end_index = 5 }
-        },
-        .{
-            .tag = .asterisk,
-            .loc = .{ .start_index = 5, .end_index = 6 }
-        },
-        .{
-            .tag = .literal_text,
-            .loc = .{ .start_index = 6, .end_index = 11 }
-        },
-        .{
-            .tag = .eof,
-            .loc = .{ .start_index = 11, .end_index = 11 }
-        }
-    };
 
-    try expectTokens(buffer, &expected_tokens);
+    const expected_tokens = source_builder
+        .tok(.literal_text, "hello")
+        .tok(.asterisk, "*")
+        .tok(.literal_text, "world")
+        .eof();
+    defer source_builder.free(expected_tokens);
+
+    try expectTokens(buffer, expected_tokens);
 }
+
+const source_builder = @import("testing/source_builder.zig");
 
 fn expectTokens(
     buffer: [:0]const u8,
