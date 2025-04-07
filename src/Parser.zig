@@ -368,10 +368,6 @@ fn parseInlineModifier(self: *Parser) !Element {
                     try token_stack.append(modifier_token);
                 }
             },
-            .literal_text => {
-                const text_el = try self.eatText();
-                _ = try top_of_stack.addChild(text_el);
-            },
             .newline,
             .eof => return self.err(.unterminated_modifier, token_stack.getLast()),
             else => {
