@@ -106,7 +106,7 @@ pub fn parse(self: *Parser) !void {
         const token = self.tokens[self.tok_i];
 
         const el = switch (token.tag) {
-            .heading => blk: {
+            .pound => blk: {
                 if (token.len() > 6) {
                     return self.err(.invalid_token, token);
                 }

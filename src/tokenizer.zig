@@ -7,7 +7,7 @@ pub const Token = struct {
     loc: Loc,
 
     pub const Tag = enum {
-        heading,
+        pound,
         literal_text,
         newline,
         backtick,
@@ -80,7 +80,7 @@ fn nextStructural(self: *Tokenizer) ?Token {
             std.log.warn("Encountered early EOF character.", .{});
         },
         '#' => {
-            token.tag = .heading;
+            token.tag = .pound;
             while (self.buffer[self.index] == '#') {
                 self.index += 1;
             }
