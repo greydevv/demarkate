@@ -152,20 +152,20 @@ fn parseParagraph(self: *Parser) !Element {
     };
     errdefer paragraph.deinit();
 
+    while (true) {
+        const reset_tok_i = self.tok_i;
+
+        // parse inline content until there is none left
+        if (try self.parseInline()) |child_el| {
+            _ = try paragraph.addChild(child_el);
+        } else {
+            self.tok_i = reset_tok_i;
+            break;
+        }
+
+    }
 
     return paragraph;
-    // while (true) {
-    //     const reset_tok_i = self.tok_i;
-    //
-    //     // parse inline content until there is none left
-    //     if (try self.parseInline()) |child_el| {
-    //         _ = try el.addChild(child_el);
-    //     } else {
-    //         self.tok_i = reset_tok_i;
-    //         break;
-    //     }
-    //
-    // }
 }
 
 fn expectInlineCode(self: *Parser) !Element {
@@ -303,9 +303,10 @@ fn parseTerminalInline(self: *Parser) !?Element {
                 return self.err(.unexpected_token, token);
             }
         },
+        .pound,
         .literal_text => {
-            const text: ?Element = try self.eatText();
-            return text;
+            _ = self.eatToken();
+            return Element.initLeaf(.text, token);
         },
         else => return null,
     }
