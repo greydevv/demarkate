@@ -121,9 +121,6 @@ pub fn parse(self: *Parser) !void {
                 };
                 errdefer heading.deinit();
 
-                const line_break = try self.eatLineBreak();
-                _ = try heading.addChild(line_break);
-
                 break :blk heading;
             },
             .newline => try self.eatLineBreak(),
@@ -147,26 +144,31 @@ pub fn parse(self: *Parser) !void {
 }
 
 fn parseParagraph(self: *Parser) !Element {
-    var el = Element.initNode(self.allocator, .paragraph);
-    errdefer el.deinit();
-
-    while (true) {
-        const reset_tok_i = self.tok_i;
-
-        // parse inline content until there is none left
-        if (try self.parseInline()) |child_el| {
-            _ = try el.addChild(child_el);
-        } else {
-            self.tok_i = reset_tok_i;
-            break;
+    var paragraph = Element{
+        .node = .{
+            .children = try self.parseInlineUntilLineBreakOrEof(),
+            .tag = .heading
         }
+    };
+    errdefer paragraph.deinit();
 
-    }
 
-    return el;
+    return paragraph;
+    // while (true) {
+    //     const reset_tok_i = self.tok_i;
+    //
+    //     // parse inline content until there is none left
+    //     if (try self.parseInline()) |child_el| {
+    //         _ = try el.addChild(child_el);
+    //     } else {
+    //         self.tok_i = reset_tok_i;
+    //         break;
+    //     }
+    //
+    // }
 }
 
-fn parseInlineCode(self: *Parser) !Element {
+fn expectInlineCode(self: *Parser) !Element {
     const open_backtick_token = self.eatToken();
 
     var code_el = Element.initNode(self.allocator, .code);
@@ -295,7 +297,7 @@ fn parseTerminalInline(self: *Parser) !?Element {
     switch (token.tag) {
         .backtick => {
             if (token.len() == 1) {
-                const code_el: ?Element = try self.parseInlineCode();
+                const code_el: ?Element = try self.expectInlineCode();
                 return code_el;
             } else {
                 return self.err(.unexpected_token, token);
@@ -438,7 +440,7 @@ test "fails on unterminated inline code" {
     );
 }
 
-test "fails on unterminated modifier" {
+test "fails on unterminated modifier at eof" {
     const source = source_builder
         .tok(.asterisk, "*")
         .eof();
