@@ -25,14 +25,6 @@ pub const Element = union(Element.Type) {
             bold,
             strikethrough
         };
-
-        pub fn deinit(self: *const Node) void {
-            for (self.children.items) |*child| {
-                child.deinit();
-            }
-
-            self.children.deinit();
-        }
     };
 
     pub const Leaf = struct {
@@ -67,7 +59,13 @@ pub const Element = union(Element.Type) {
 
     pub fn deinit(self: *const Element) void {
         switch (self.*) {
-            .node => |*n| n.deinit(),
+            .node => |*node| {
+                for (node.children.items) |child| {
+                    child.deinit();
+                }
+
+                node.children.deinit();
+            },
             .leaf => return,
         }
     }
