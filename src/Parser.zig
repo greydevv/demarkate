@@ -131,15 +131,39 @@ pub fn parse(self: *Parser) !void {
                 if (token.len() == 3) {
                     break :blk try self.parseBlockCode();
                 } else {
-                    break :blk try self.parseInline();
+                    if (try self.parseInline()) |inline_el| {
+                        break :blk inline_el;
+                    }
+
+                    return self.err(.unexpected_token, token);
                 }
             },
             .eof => return,
-            else => try self.parseInline(),
+            else => try self.parseParagraph(),
         };
 
         try self.elements.append(el);
     }
+}
+
+fn parseParagraph(self: *Parser) !Element {
+    var el = Element.initNode(self.allocator, .paragraph);
+    errdefer el.deinit();
+
+    while (true) {
+        const reset_tok_i = self.tok_i;
+
+        // parse inline content until there is none left
+        if (try self.parseInline()) |child_el| {
+            _ = try el.addChild(child_el);
+        } else {
+            self.tok_i = reset_tok_i;
+            break;
+        }
+
+    }
+
+    return el;
 }
 
 fn parseInlineCode(self: *Parser) !Element {
@@ -238,49 +262,60 @@ fn parseInlineUntilLineBreakOrEof(self: *Parser) !Element.Node.Children {
 
     var token = self.tokens[self.tok_i];
     while (token.tag != .newline and token.tag != .eof) {
-        const child = try self.parseInline();
-        try children.append(child);
+        if (try self.parseInline()) |child_el| {
+            try children.append(child_el);
+        } else {
+            return self.err(.unexpected_token, token);
+        }
+
         token = self.tokens[self.tok_i];
     }
 
     return children;
 }
 
+
 /// Parses top-level inline elements.
-fn parseInline(self: *Parser) !Element {
+fn parseInline(self: *Parser) !?Element {
     const token = self.tokens[self.tok_i];
     switch (token.tag) {
         .asterisk,
         .underscore,
-        .tilde => |tag| {
-            const modifier_tag = elementTagFromTokenTag(tag);
-            return self.parseInlineModifier(modifier_tag);
+        .tilde => {
+            const el = try self.parseInlineModifier();
+            return el;
         },
-        else => return self.parseTerminalInline(),
+        else => return self.parseTerminalInline()
     }
 }
 
 /// A variant of parseInline that does not recurse.
-fn parseTerminalInline(self: *Parser) !Element {
+fn parseTerminalInline(self: *Parser) !?Element {
     const token = self.tokens[self.tok_i];
     switch (token.tag) {
         .backtick => {
             if (token.len() == 1) {
-                return self.parseInlineCode();
+                const code_el: ?Element = try self.parseInlineCode();
+                return code_el;
             } else {
                 return self.err(.unexpected_token, token);
             }
         },
-        .literal_text => return self.eatText(),
-        else => return self.err(.unexpected_token, token)
+        .literal_text => {
+            const text: ?Element = try self.eatText();
+            return text;
+        },
+        else => return null,
     }
 }
 
-fn parseInlineModifier(self: *Parser, node_tag: Element.Node.Tag) !Element {
+fn parseInlineModifier(self: *Parser) !Element {
     // TODO: throw error if closing modifier starts on newline, but opening doesn't
     // (and vice-versa)
 
-    var top_node = Element.initNode(self.allocator, node_tag);
+    const initial_modifier_tag = elementTagFromTokenTag(self.tokens[self.tok_i].tag);
+
+    var top_node = Element.initNode(self.allocator, initial_modifier_tag);
     errdefer top_node.deinit();
 
     var el_stack = std.ArrayList(*Element).init(self.allocator);
@@ -291,7 +326,7 @@ fn parseInlineModifier(self: *Parser, node_tag: Element.Node.Tag) !Element {
     defer token_stack.deinit();
 
     try el_stack.append(&top_node);
-    try tag_stack.append(node_tag);
+    try tag_stack.append(initial_modifier_tag);
     try token_stack.append(self.eatToken());
 
     var top_of_stack = &top_node;
@@ -337,8 +372,11 @@ fn parseInlineModifier(self: *Parser, node_tag: Element.Node.Tag) !Element {
             .newline,
             .eof => return self.err(.unterminated_modifier, token_stack.getLast()),
             else => {
-                const el = try self.parseTerminalInline();
-                _ = try top_of_stack.addChild(el);
+                if (try self.parseTerminalInline()) |child_el| {
+                    _ = try top_of_stack.addChild(child_el);
+                } else {
+                    return self.err(.unterminated_modifier, token);
+                }
             }
         }
     }
@@ -438,6 +476,19 @@ test "parses modifier" {
         .eof();
     defer source_builder.free(source);
 
+    const expected_ast = ast_builder
+        .node(.paragraph, ast_builder
+            .leaf(.text, source[0])
+            .node(.bold, ast_builder
+                .leaf(.text, source[2])
+                .build()
+            )
+            .leaf(.text, source[4])
+            .build()
+        )
+        .build();
+    defer ast_builder.free(expected_ast);
+
     var parser = Parser.init(
         std.testing.allocator,
         source
@@ -447,7 +498,7 @@ test "parses modifier" {
     _ = try parser.parse();
 
     try std.testing.expectEqual(0, parser.errors.items.len);
-    try std.testing.expectEqual(3, parser.elements.items.len);
+    try ast_builder.expectEqual(expected_ast, parser.elements);
 }
 
 test "parses nested modifiers" {
@@ -461,9 +512,12 @@ test "parses nested modifiers" {
     defer source_builder.free(source);
 
     const expected_ast = ast_builder
-        .node(.italic, ast_builder
-            .node(.bold, ast_builder
-                .leaf(.text, source[2])
+        .node(.paragraph, ast_builder
+            .node(.italic, ast_builder
+                .node(.bold, ast_builder
+                    .leaf(.text, source[2])
+                    .build()
+                )
                 .build()
             )
             .build()
