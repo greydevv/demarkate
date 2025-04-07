@@ -111,28 +111,14 @@ pub fn parse(self: *Parser) !void {
                     return self.err(.invalid_token, token);
                 }
 
-                _ = self.eatToken();
-
-                var heading = Element{
-                    .node = .{
-                        .children = try self.parseInlineUntilLineBreakOrEof(),
-                        .tag = .heading
-                    }
-                };
-                errdefer heading.deinit();
-
-                break :blk heading;
+                break :blk try self.parseHeading();
             },
-            .newline => try self.eatLineBreak(),
+            .newline => try self.expectLineBreak(),
             .backtick => blk: {
                 if (token.len() == 3) {
                     break :blk try self.parseBlockCode();
                 } else {
-                    if (try self.parseInline()) |inline_el| {
-                        break :blk inline_el;
-                    }
-
-                    return self.err(.unexpected_token, token);
+                    break :blk try self.parseInline();
                 }
             },
             .eof => return,
@@ -143,29 +129,23 @@ pub fn parse(self: *Parser) !void {
     }
 }
 
-fn parseParagraph(self: *Parser) !Element {
-    var paragraph = Element{
+fn parseHeading(self: *Parser) !Element {
+    _ = self.eatToken();
+    return Element{
         .node = .{
-            .children = try self.parseInlineUntilLineBreakOrEof(),
-            .tag = .paragraph
+            .tag = .heading,
+            .children = try self.expectInlineUntilLineBreakOrEof()
         }
     };
-    errdefer paragraph.deinit();
+}
 
-    while (true) {
-        const reset_tok_i = self.tok_i;
-
-        // parse inline content until there is none left
-        if (try self.parseInline()) |child_el| {
-            _ = try paragraph.addChild(child_el);
-        } else {
-            self.tok_i = reset_tok_i;
-            break;
+fn parseParagraph(self: *Parser) !Element {
+    return Element{
+        .node = .{
+            .tag = .paragraph,
+            .children = try self.expectInlineUntilLineBreakOrEof()
         }
-
-    }
-
-    return paragraph;
+    };
 }
 
 fn expectInlineCode(self: *Parser) !Element {
@@ -238,7 +218,7 @@ fn parseBlockCode(self: *Parser) !Element {
     return code_el;
 }
 
-fn eatLineBreak(self: *Parser) !Element {
+fn expectLineBreak(self: *Parser) !Element {
     const token = self.tokens[self.tok_i];
     if (token.tag != .newline) {
         return self.err(.unexpected_token, token);
@@ -248,29 +228,20 @@ fn eatLineBreak(self: *Parser) !Element {
     return Element.initLeaf(.line_break, token);
 }
 
-fn eatText(self: *Parser) !Element {
-    const token = self.tokens[self.tok_i];
-    if (token.tag != .literal_text) {
-        return self.err(.unexpected_token, token);
-    }
-
-    _ = self.eatToken();
-    return Element.initLeaf(.text, token);
-}
-
-fn parseInlineUntilLineBreakOrEof(self: *Parser) !Element.Node.Children {
-    var children = Element.Node.Children.init(self.allocator);
+fn expectInlineUntilLineBreakOrEof(self: *Parser) !Element.Node.Children {
+    var children = std.ArrayList(Element).init(self.allocator);
     errdefer children.deinit();
 
     var token = self.tokens[self.tok_i];
     while (token.tag != .newline and token.tag != .eof) {
-        if (try self.parseInline()) |child_el| {
-            try children.append(child_el);
-        } else {
-            return self.err(.unexpected_token, token);
-        }
+        const child_el = try self.parseInline();
+        _ = try children.append(child_el);
 
         token = self.tokens[self.tok_i];
+    }
+
+    if (children.items.len == 0) {
+        return self.err(.unexpected_token, token);
     }
 
     return children;
@@ -278,27 +249,23 @@ fn parseInlineUntilLineBreakOrEof(self: *Parser) !Element.Node.Children {
 
 
 /// Parses top-level inline elements.
-fn parseInline(self: *Parser) !?Element {
+fn parseInline(self: *Parser) !Element {
     const token = self.tokens[self.tok_i];
     switch (token.tag) {
         .asterisk,
         .underscore,
-        .tilde => {
-            const el = try self.parseInlineModifier();
-            return el;
-        },
+        .tilde => return self.parseInlineModifier(),
         else => return self.parseTerminalInline()
     }
 }
 
 /// A variant of parseInline that does not recurse.
-fn parseTerminalInline(self: *Parser) !?Element {
+fn parseTerminalInline(self: *Parser) !Element {
     const token = self.tokens[self.tok_i];
     switch (token.tag) {
         .backtick => {
             if (token.len() == 1) {
-                const code_el: ?Element = try self.expectInlineCode();
-                return code_el;
+                return self.expectInlineCode();
             } else {
                 return self.err(.unexpected_token, token);
             }
@@ -308,7 +275,7 @@ fn parseTerminalInline(self: *Parser) !?Element {
             _ = self.eatToken();
             return Element.initLeaf(.text, token);
         },
-        else => return null,
+        else => return self.err(.unexpected_token, token),
     }
 }
 
@@ -371,11 +338,8 @@ fn parseInlineModifier(self: *Parser) !Element {
             .newline,
             .eof => return self.err(.unterminated_modifier, token_stack.getLast()),
             else => {
-                if (try self.parseTerminalInline()) |child_el| {
-                    _ = try top_of_stack.addChild(child_el);
-                } else {
-                    return self.err(.unterminated_modifier, token);
-                }
+                const child_el = try self.parseTerminalInline();
+                _ = try top_of_stack.addChild(child_el);
             }
         }
     }
@@ -519,6 +483,36 @@ test "parses nested modifiers" {
                 )
                 .build()
             )
+            .build()
+        )
+        .build();
+    defer ast_builder.free(expected_ast);
+
+    var parser = Parser.init(
+        std.testing.allocator,
+        source
+    );
+    defer parser.deinit();
+
+    _ = try parser.parse();
+
+    try std.testing.expectEqual(0, parser.errors.items.len);
+    try ast_builder.expectEqual(expected_ast, parser.elements);
+}
+
+test "parses pound as literal text" {
+    const source = source_builder
+        .tok(.literal_text, "a")
+        .tok(.pound, "###")
+        .tok(.literal_text, "a")
+        .eof();
+    defer source_builder.free(source);
+
+    const expected_ast = ast_builder
+        .node(.paragraph, ast_builder
+            .leaf(.text, source[0])
+            .leaf(.text, source[1])
+            .leaf(.text, source[2])
             .build()
         )
         .build();
