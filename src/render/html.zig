@@ -20,6 +20,7 @@ pub const Element = union(Element.Type) {
 
         pub const Tag = enum {
             div,
+            span,
         };
     };
 
@@ -30,9 +31,22 @@ pub const Element = union(Element.Type) {
 
         pub const Tag = enum {
             literal,
-            span
+            br,
         };
     };
+
+    pub fn deinit(self: *const Element) void {
+        switch (self.*) {
+            .node => |*node| {
+                for (node.children.items) |child| {
+                    child.deinit();
+                }
+
+                node.children.deinit();
+            },
+            .leaf => return
+        }
+    }
 
     pub fn initNode(allocator: Allocator, tag: Node.Tag, class: []const u8) Element {
         return .{
@@ -66,13 +80,6 @@ pub const Renderer = struct {
     allocator: Allocator,
     source: [:0]const u8,
 
-    pub fn init(allocator: Allocator, source: [:0]const u8) Renderer {
-        return .{
-            .allocator = allocator,
-            .source = source
-        };
-    }
-
     pub fn render(self: *const Renderer, elements: []const ast.Element) !Element {
         var top_level_el = Element.initNode(
             self.allocator,
@@ -81,15 +88,40 @@ pub const Renderer = struct {
         );
 
         for (elements) |el| {
-            const html_el = switch (el) {
-                .node => unreachable,
-                .leaf => |leaf| try self.renderLeaf(leaf)
-            };
-
+            const html_el = try self.renderElement(el);
             try top_level_el.addChild(html_el);
         }
 
         return top_level_el;
+    }
+
+    fn renderElement(self: *const Renderer, el: ast.Element) !Element {
+        return switch (el) {
+            .node => |node| try self.renderNode(node),
+            .leaf => |leaf| try self.renderLeaf(leaf)
+        };
+    }
+
+    fn renderNode(self: *const Renderer, node: ast.Element.Node) !Element {
+        const el = switch (node.tag) {
+            .italic => blk: {
+                const el = Element.initNode(
+                    self.allocator,
+                    .span,
+                    "italic"
+                );
+
+                for (node.children.items) |child_node| {
+                    const child_el = try self.renderElement(child_node);
+                    try el.addChild(child_el);
+                }
+
+                break :blk el;
+            },
+            else => unreachable
+        };
+        
+        return el;
     }
 
     fn renderLeaf(self: *const Renderer, leaf: ast.Element.Leaf) !Element {
@@ -97,6 +129,12 @@ pub const Renderer = struct {
             .text =>
                 Element.initLeaf(
                     .literal,
+                    "",
+                    self.sourceFromToken(leaf.token)
+                ),
+            .line_break =>
+                Element.initLeaf(
+                    .br,
                     "",
                     self.sourceFromToken(leaf.token)
                 ),
