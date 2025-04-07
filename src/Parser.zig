@@ -147,7 +147,7 @@ fn parseParagraph(self: *Parser) !Element {
     var paragraph = Element{
         .node = .{
             .children = try self.parseInlineUntilLineBreakOrEof(),
-            .tag = .heading
+            .tag = .paragraph
         }
     };
     errdefer paragraph.deinit();
