@@ -20,7 +20,8 @@ pub const Element = union(Element.Type) {
         pub const Tag = enum {
             heading,
             paragraph,
-            code,
+            block_code,
+            inline_code,
             italic,
             bold,
             strikethrough
