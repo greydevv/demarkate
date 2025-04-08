@@ -33,6 +33,7 @@ pub const Element = union(Element.Type) {
         token: Token,
 
         pub const Tag = enum {
+            metadata,
             text,
             code_literal,
             line_break,
