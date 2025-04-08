@@ -97,7 +97,7 @@ pub const Renderer = struct {
     }
 
     pub fn render(self: *Renderer, elements: []const ast.Element) !void {
-        try self.openTag("div", "markdown");
+        try self.openTagWithClass("div", "markdown");
 
         for (elements) |el| {
             try self.renderElement(el);
@@ -113,7 +113,7 @@ pub const Renderer = struct {
                     const level = node.children.items[0].leaf.token.len();
                     std.log.info("HEADING LEVEL: {}", .{ level });
 
-                    try self.openTag("h1", null);
+                    try self.openTag("h1");
 
                     for (node.children.items[1..]) |child| {
                         try self.renderElement(child);
@@ -122,7 +122,7 @@ pub const Renderer = struct {
                     try self.closeTag("h1");
                 },
                 .paragraph => {
-                    try self.openTag("p", null);
+                    try self.openTag("p");
 
                     for (node.children.items) |child| {
                         try self.renderElement(child);
@@ -130,9 +130,36 @@ pub const Renderer = struct {
 
                     try self.closeTag("p");
                 },
+                .italic => {
+                    try self.openTag("em");
+
+                    for (node.children.items) |child| {
+                        try self.renderElement(child);
+                    }
+
+                    try self.closeTag("em");
+                },
+                .bold => {
+                    try self.openTag("strong");
+
+                    for (node.children.items) |child| {
+                        try self.renderElement(child);
+                    }
+
+                    try self.closeTag("strong");
+                },
+                .strikethrough => {
+                    try self.openTag("s");
+
+                    for (node.children.items) |child| {
+                        try self.renderElement(child);
+                    }
+
+                    try self.closeTag("s");
+                },
                 .block_code => {
-                    try self.openTag("pre", null);
-                    try self.openTag("code", null);
+                    try self.openTag("pre");
+                    try self.openTag("code");
 
                     for (node.children.items) |child| {
                         try self.renderElement(child);
@@ -142,7 +169,7 @@ pub const Renderer = struct {
                     try self.closeTag("pre");
                 },
                 .inline_code => {
-                    try self.openTag("code", null);
+                    try self.openTag("code");
 
                     for (node.children.items) |child| {
                         try self.renderElement(child);
@@ -150,18 +177,21 @@ pub const Renderer = struct {
 
                     try self.closeTag("code");
                 },
-                else => unreachable
             },
             .leaf => |leaf| switch (leaf.tag) {
                 .text,
                 .code_literal => try self.appendToken(leaf.token),
-                .line_break => try self.openTag("br", null),
+                .line_break => try self.openTag("br"),
                 .metadata => unreachable,
             }
         };
     }
 
-    fn openTag(self: *Renderer, comptime tag: []const u8, comptime class: ?[]const u8) !void {
+    fn openTag(self: *Renderer, comptime tag: []const u8) !void {
+        return self.openTagWithClass(tag, null);
+    }
+
+    fn openTagWithClass(self: *Renderer, comptime tag: []const u8, comptime class: ?[]const u8) !void {
         const tag_open = comptime blk: {
             if (class) |class_name| {
                 break :blk std.fmt.comptimePrint("<{s} class={s}>", .{ tag, class_name });
@@ -170,21 +200,13 @@ pub const Renderer = struct {
             }
         };
 
-        const buf = try self.buffer.addManyAsSlice(tag_open.len);
-        _ = std.fmt.bufPrint(buf, "{s}", .{ tag_open }) catch |err| switch (err) {
-            error.NoSpaceLeft => unreachable,
-        };
-
+        try self.buffer.appendSlice(tag_open);
     }
+
 
     fn closeTag(self: *Renderer, comptime tag: []const u8) !void {
         const tag_close = comptime std.fmt.comptimePrint("</{s}>", .{ tag });
-        const buf = try self.buffer.addManyAsSlice(tag_close.len);
-
-        // TODO: need this allocation, why can't I just buffer.append(tag_close)?
-        _ = std.fmt.bufPrint(buf, "{s}", .{ tag_close }) catch |err| switch (err) {
-            error.NoSpaceLeft => unreachable,
-        };
+        try self.buffer.appendSlice(tag_close);
     }
 
     fn appendToken(self: *Renderer, token: Token) !void {
@@ -192,13 +214,3 @@ pub const Renderer = struct {
         try self.buffer.appendSlice(source);
     }
 };
-
-fn buildClassName(comptime class: ?[]const u8) []const u8 {
-    comptime {
-        if (class) |class_name| {
-            return std.fmt.comptimePrint(" class={s}", .{ class_name });
-        } else {
-            return "";
-        }
-    }
-}
