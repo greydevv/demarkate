@@ -235,6 +235,8 @@ fn expectInlineUntilLineBreakOrEof(self: *Parser) !Element.Node.Children {
     var token = self.tokens[self.tok_i];
     while (token.tag != .newline and token.tag != .eof) {
         const child_el = try self.parseInline();
+        errdefer child_el.deinit();
+
         _ = try children.append(child_el);
 
         token = self.tokens[self.tok_i];
