@@ -26,11 +26,12 @@ pub const Element = union(Element.Type) {
 
     pub const Leaf = struct {
         tag: Tag,
-        class: []u8,
-        source: []const u8,
+        class: ?[]u8,
+        source: ?[]const u8,
 
         pub const Tag = enum {
             literal,
+            code,
             br,
         };
     };
@@ -58,7 +59,7 @@ pub const Element = union(Element.Type) {
         };
     }
 
-    pub fn initLeaf(tag: Leaf.Tag, class: []u8, source: []const u8) Element {
+    pub fn initLeaf(tag: Leaf.Tag, class: ?[]u8, source: ?[]const u8) Element {
         return .{
             .leaf = .{
                 .tag = tag,
@@ -76,75 +77,128 @@ pub const Element = union(Element.Type) {
     }
 };
 
+pub const RenderError = error{OutOfMemory};
+
 pub const Renderer = struct {
     allocator: Allocator,
     source: [:0]const u8,
+    buffer: std.ArrayList(u8),
 
-    pub fn render(self: *const Renderer, elements: []const ast.Element) !Element {
-        var top_level_el = Element.initNode(
-            self.allocator,
-            .div,
-            "markdown"
-        );
+    pub fn init(allocator: Allocator, source: [:0]const u8) Renderer {
+        return .{
+            .allocator = allocator,
+            .source = source,
+            .buffer = std.ArrayList(u8).init(allocator)
+        };
+    }
+
+    pub fn deinit(self: *Renderer) void {
+        self.buffer.deinit();
+    }
+
+    pub fn render(self: *Renderer, elements: []const ast.Element) !void {
+        try self.openTag("div", "markdown");
 
         for (elements) |el| {
-            const html_el = try self.renderElement(el);
-            try top_level_el.addChild(html_el);
+            try self.renderElement(el);
         }
 
-        return top_level_el;
+        try self.closeTag("div");
     }
 
-    fn renderElement(self: *const Renderer, el: ast.Element) !Element {
+    fn renderElement(self: *Renderer, el: ast.Element) RenderError!void {
         return switch (el) {
-            .node => |node| try self.renderNode(node),
-            .leaf => |leaf| try self.renderLeaf(leaf)
-        };
-    }
+            .node => |node| switch (node.tag) {
+                .heading => {
+                    const level = node.children.items[0].leaf.token.len();
+                    std.log.info("HEADING LEVEL: {}", .{ level });
 
-    fn renderNode(self: *const Renderer, node: ast.Element.Node) !Element {
-        const el = switch (node.tag) {
-            .italic => blk: {
-                const el = Element.initNode(
-                    self.allocator,
-                    .span,
-                    "italic"
-                );
+                    try self.openTag("h1", null);
 
-                for (node.children.items) |child_node| {
-                    const child_el = try self.renderElement(child_node);
-                    try el.addChild(child_el);
-                }
+                    for (node.children.items[1..]) |child| {
+                        try self.renderElement(child);
+                    }
 
-                break :blk el;
+                    try self.closeTag("h1");
+                },
+                .paragraph => {
+                    try self.openTag("p", null);
+
+                    for (node.children.items) |child| {
+                        try self.renderElement(child);
+                    }
+
+                    try self.closeTag("p");
+                },
+                .block_code => {
+                    try self.openTag("pre", null);
+                    try self.openTag("code", null);
+
+                    for (node.children.items) |child| {
+                        try self.renderElement(child);
+                    }
+
+                    try self.closeTag("code");
+                    try self.closeTag("pre");
+                },
+                .inline_code => {
+                    try self.openTag("code", null);
+
+                    for (node.children.items) |child| {
+                        try self.renderElement(child);
+                    }
+
+                    try self.closeTag("code");
+                },
+                else => unreachable
             },
-            else => unreachable
+            .leaf => |leaf| switch (leaf.tag) {
+                .text,
+                .code_literal => try self.appendToken(leaf.token),
+                .line_break => try self.openTag("br", null),
+                .metadata => unreachable,
+            }
         };
-        
-        return el;
     }
 
-    fn renderLeaf(self: *const Renderer, leaf: ast.Element.Leaf) !Element {
-        const el = switch (leaf.tag) {
-            .text =>
-                Element.initLeaf(
-                    .literal,
-                    "",
-                    self.sourceFromToken(leaf.token)
-                ),
-            .line_break =>
-                Element.initLeaf(
-                    .br,
-                    "",
-                    self.sourceFromToken(leaf.token)
-                ),
-            else => unreachable,
+    fn openTag(self: *Renderer, comptime tag: []const u8, comptime class: ?[]const u8) !void {
+        const tag_open = comptime blk: {
+            if (class) |class_name| {
+                break :blk std.fmt.comptimePrint("<{s} class={s}>", .{ tag, class_name });
+            } else {
+                break :blk std.fmt.comptimePrint("<{s}>", .{ tag });
+            }
         };
 
-        return el;
+        const buf = try self.buffer.addManyAsSlice(tag_open.len);
+        _ = std.fmt.bufPrint(buf, "{s}", .{ tag_open }) catch |err| switch (err) {
+            error.NoSpaceLeft => unreachable,
+        };
+
     }
 
-    fn sourceFromToken(self: *const Renderer, token: Token) []const u8 {
-        return token.slice(self.source);
+    fn closeTag(self: *Renderer, comptime tag: []const u8) !void {
+        const tag_close = comptime std.fmt.comptimePrint("</{s}>", .{ tag });
+        const buf = try self.buffer.addManyAsSlice(tag_close.len);
+
+        // TODO: need this allocation, why can't I just buffer.append(tag_close)?
+        _ = std.fmt.bufPrint(buf, "{s}", .{ tag_close }) catch |err| switch (err) {
+            error.NoSpaceLeft => unreachable,
+        };
+    }
+
+    fn appendToken(self: *Renderer, token: Token) !void {
+        const source = token.slice(self.source);
+        try self.buffer.appendSlice(source);
     }
 };
+
+fn buildClassName(comptime class: ?[]const u8) []const u8 {
+    comptime {
+        if (class) |class_name| {
+            return std.fmt.comptimePrint(" class={s}", .{ class_name });
+        } else {
+            return "";
+        }
+    }
+}
