@@ -130,11 +130,23 @@ pub fn parse(self: *Parser) !void {
 }
 
 fn parseHeading(self: *Parser) !Element {
-    _ = self.eatToken();
+    const metadata_el = Element.initLeaf(.metadata, self.eatToken());
+    errdefer metadata_el.deinit();
+
+    var children = Element.Node.Children.init(self.allocator);
+    errdefer children.deinit();
+
+    var content = try self.expectInlineUntilLineBreakOrEof();
+    const slice = try content.toOwnedSlice();
+    defer content.allocator.free(slice);
+
+    try children.append(metadata_el);
+    try children.appendSlice(slice);
+
     return Element{
         .node = .{
             .tag = .heading,
-            .children = try self.expectInlineUntilLineBreakOrEof()
+            .children = children,
         }
     };
 }
