@@ -1,7 +1,7 @@
 const std = @import("std");
 const Tokenizer = @import("Tokenizer.zig");
 const Parser = @import("Parser.zig");
-const Renderer = @import("render/html.zig").Renderer;
+const HtmlRenderer = @import("render/html.zig").Renderer;
 
 const File = std.fs.File;
 const Allocator = std.mem.Allocator;
@@ -46,9 +46,12 @@ pub fn main() !void {
         try printAst(allocator, &el, 0, &tokenizer);
     }
 
+    var renderer = HtmlRenderer.init(allocator, buffer[0..:0]);
+    defer renderer.deinit();
 
-    const renderer = Renderer.init(allocator, buffer[0..:0]);
-    _ = try renderer.render(parser.elements.items);
+    try renderer.render(parser.elements.items);
+
+    std.debug.print("{s}\n", .{ renderer.buffer.items });
 }
 
 fn readFileAlloc(allocator: Allocator, file_path: []const u8) ![:0]u8 {
