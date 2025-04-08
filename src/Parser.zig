@@ -151,7 +151,7 @@ fn parseParagraph(self: *Parser) !Element {
 fn expectInlineCode(self: *Parser) !Element {
     const open_backtick_token = self.eatToken();
 
-    var code_el = Element.initNode(self.allocator, .code);
+    var code_el = Element.initNode(self.allocator, .inline_code);
     errdefer code_el.deinit();
 
     while (true) {
@@ -185,7 +185,7 @@ fn parseBlockCode(self: *Parser) !Element {
     }
 
     const open_backtick_token = self.eatToken();
-    var code_el = Element.initNode(self.allocator, .code);
+    var code_el = Element.initNode(self.allocator, .block_code);
     errdefer code_el.deinit();
 
     while (true) {
