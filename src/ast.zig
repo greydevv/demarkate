@@ -3,12 +3,10 @@ const Allocator = std.mem.Allocator;
 const Token = @import("Tokenizer.zig").Token;
 
 pub const Element = union(Element.Type) {
+pub const Element = union(enum) {
     node: Node,
     leaf: Leaf,
 
-    pub const Type = enum {
-        node,
-        leaf
     };
 
     pub const Node = struct {
