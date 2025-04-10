@@ -2,11 +2,61 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Token = @import("Tokenizer.zig").Token;
 
-pub const Element = union(Element.Type) {
+pub const Span = struct {
+    start: usize,
+    end: usize,
+
+    pub fn init(start: usize, end: usize) Span {
+        return .{
+            .start = start,
+            .end = end
+        };
+    }
+
+    pub fn fromToken(token: Token) Span {
+        return .{
+            .start = token.loc.start_index,
+            .end = token.loc.end_index,
+        };
+    }
+};
+
 pub const Element = union(enum) {
     node: Node,
     leaf: Leaf,
 
+    pub const Block = union(enum) {
+        heading: []Inline,
+        paragraph: []Inline,
+        code: []Span,
+    };
+
+    pub const Inline = union(enum) {
+        text: Span,
+        code: Span,
+        line_break: Span,
+        url: struct {
+            children: []Inline,
+            url: Span,
+        },
+        img: struct {
+            children: []Inline,
+            url: Span,
+        },
+        modifier: Modifier,
+
+        pub const Modifier = struct {
+            children: []Inline,
+            tag: Tag,
+
+            const Tag = enum {
+                bold,
+                italic,
+                strikethrough,
+                underline,
+                code
+            };
+        };
     };
 
     pub const Node = struct {
