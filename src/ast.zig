@@ -90,11 +90,4 @@ pub const Element = union(Element.Type) {
             .leaf => unreachable,
         }
     }
-
-    pub fn children(self: *const Element) []Element {
-        switch (self.*) {
-            .node => |*n| return n.children.items,
-            .leaf => unreachable,
-        }
-    }
 };
