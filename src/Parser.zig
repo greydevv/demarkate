@@ -121,12 +121,24 @@ pub fn parse(self: *Parser) !void {
                     break :blk try self.parseInline();
                 }
             },
+            .ampersat => try self.parseBuiltIn(),
             .eof => return,
             else => try self.parseParagraph(),
         };
 
         try self.elements.append(el);
     }
+}
+
+fn parseBuiltIn(self: *Parser) !Element {
+    _ = self.eatToken();
+
+    const token = self.tokens[self.tok_i];
+    if (token.tag != .literal_text) {
+        return self.err(.unexpected_token, token);
+    }
+
+    unreachable;
 }
 
 fn parseHeading(self: *Parser) !Element {
