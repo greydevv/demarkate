@@ -12,6 +12,10 @@ pub const Span = struct {
             .end = token.loc.end_index,
         };
     }
+
+    pub fn slice(self: *const Span, buffer: [:0]const u8) []const u8 {
+        return buffer[self.start..self.end];
+    }
 };
 
 pub const Element = union(enum) {
