@@ -143,13 +143,13 @@ fn parseBuiltIn(self: *Parser) !Element {
 }
 
 fn parseHeading(self: *Parser) !Element {
-    const heading = Element{
+    const level = self.eatToken().len();
+    return Element{
         .heading = .{
-            .children = std.ArrayList(Element).init(self.allocator)
+            .level = level,
+            .children = try self.expectInlineUntilLineBreakOrEof()
         }
     };
-
-    return heading;
 }
 
 fn parseParagraph(self: *Parser) !Element {

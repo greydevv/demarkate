@@ -21,11 +21,9 @@ pub const Span = struct {
 pub const Element = union(enum) {
     heading: struct {
         children: std.ArrayList(Element),
+        level: usize,
     },
     paragraph: struct {
-        children: std.ArrayList(Element),
-    },
-    block_code: struct {
         children: std.ArrayList(Element),
     },
     url: struct {
@@ -35,6 +33,9 @@ pub const Element = union(enum) {
     img: struct {
         children: std.ArrayList(Element),
         url: Span,
+    },
+    block_code: struct {
+        children: std.ArrayList(Element),
     },
     modifier: Modifier,
     inline_code: Span,
