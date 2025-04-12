@@ -108,82 +108,83 @@ pub const Renderer = struct {
 
     fn renderElement(self: *Renderer, el: ast.Element) RenderError!void {
         return switch (el) {
-            .node => |node| switch (node.tag) {
-                .heading => {
-                    const level = node.children.items[0].leaf.token.len();
-                    std.log.info("HEADING LEVEL: {}", .{ level });
+            .heading => |h| {
+                // TODO: just h1 for now
+                try self.openTag("h1");
 
-                    try self.openTag("h1");
+                for (h.children.items) |child| {
+                    try self.renderElement(child);
+                }
 
-                    for (node.children.items[1..]) |child| {
-                        try self.renderElement(child);
-                    }
-
-                    try self.closeTag("h1");
-                },
-                .paragraph => {
-                    try self.openTag("p");
-
-                    for (node.children.items) |child| {
-                        try self.renderElement(child);
-                    }
-
-                    try self.closeTag("p");
-                },
-                .italic => {
-                    try self.openTag("em");
-
-                    for (node.children.items) |child| {
-                        try self.renderElement(child);
-                    }
-
-                    try self.closeTag("em");
-                },
-                .bold => {
-                    try self.openTag("strong");
-
-                    for (node.children.items) |child| {
-                        try self.renderElement(child);
-                    }
-
-                    try self.closeTag("strong");
-                },
-                .strikethrough => {
-                    try self.openTag("s");
-
-                    for (node.children.items) |child| {
-                        try self.renderElement(child);
-                    }
-
-                    try self.closeTag("s");
-                },
-                .block_code => {
-                    try self.openTag("pre");
-                    try self.openTag("code");
-
-                    for (node.children.items) |child| {
-                        try self.renderElement(child);
-                    }
-
-                    try self.closeTag("code");
-                    try self.closeTag("pre");
-                },
-                .inline_code => {
-                    try self.openTag("code");
-
-                    for (node.children.items) |child| {
-                        try self.renderElement(child);
-                    }
-
-                    try self.closeTag("code");
-                },
+                try self.closeTag("h1");
             },
-            .leaf => |leaf| switch (leaf.tag) {
-                .text,
-                .code_literal => try self.appendToken(leaf.token),
-                .line_break => try self.openTag("br"),
-                .metadata => unreachable,
-            }
+            .paragraph => |p| {
+                try self.openTag("p");
+
+                for (p.children.items) |child| {
+                    try self.renderElement(child);
+                }
+
+                try self.closeTag("p");
+            },
+            .modifier => |modifier|
+                switch (modifier.tag) {
+                    .bold => {
+                        try self.openTag("strong");
+
+                        for (modifier.children.items) |child| {
+                            try self.renderElement(child);
+                        }
+
+                        try self.closeTag("strong");
+                    },
+                    .italic => {
+                        try self.openTag("em");
+
+                        for (modifier.children.items) |child| {
+                            try self.renderElement(child);
+                        }
+
+                        try self.closeTag("em");
+                    },
+                    .underline => {
+                        try self.openTag("s");
+
+                        for (modifier.children.items) |child| {
+                            try self.renderElement(child);
+                        }
+
+                        try self.closeTag("s");
+                    },
+                    .strikethrough => {
+                        try self.openTag("s");
+
+                        for (modifier.children.items) |child| {
+                            try self.renderElement(child);
+                        }
+
+                        try self.closeTag("s");
+                    },
+                },
+            .block_code => |block_code| {
+                try self.openTag("pre");
+                try self.openTag("code");
+
+                for (block_code.children.items) |child| {
+                    try self.renderElement(child);
+                }
+
+                try self.closeTag("code");
+                try self.closeTag("pre");
+            },
+            .inline_code => |span| {
+                try self.openTag("code");
+                try self.appendSpan(span);
+                try self.closeTag("code");
+            },
+            .text => |span| try self.appendSpan(span),
+            .line_break => try self.openTag("br"),
+            else => unreachable,
         };
     }
 
@@ -209,8 +210,8 @@ pub const Renderer = struct {
         try self.buffer.appendSlice(tag_close);
     }
 
-    fn appendToken(self: *Renderer, token: Token) !void {
-        const source = token.slice(self.source);
+    fn appendSpan(self: *Renderer, span: ast.Span) !void {
+        const source = span.slice(self.source);
         try self.buffer.appendSlice(source);
     }
 };
