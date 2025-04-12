@@ -122,9 +122,11 @@ fn nextStructural(self: *Tokenizer) ?Token {
         },
         ';' => {
             token.tag = .semicolon;
+            self.index += 1;
         },
         '@' => {
             token.tag = .ampersat;
+            self.index += 1;
         },
         '>' => {
             token.tag = .close_angle;
