@@ -7,7 +7,7 @@ const File = std.fs.File;
 const Allocator = std.mem.Allocator;
 const Token = Tokenizer.Token;
 
-const sample_file_path = "/Users/gr.murray/Developer/zig/markdown-parser/samples/inline_modifiers.md";
+const sample_file_path = "/Users/gr.murray/Developer/zig/markdown-parser/samples/test.md";
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -41,6 +41,7 @@ pub fn main() !void {
 
         return;
     };
+
 
     for (parser.elements.items) |el| {
         try printAst(allocator, &el, 0, &tokenizer);
@@ -76,23 +77,52 @@ fn printAst(allocator: Allocator, el: *const Element, depth: u32, tokenizer: *co
     @memset(indent, ' ');
 
     switch(el.*) {
-        .node => |node| {
-            std.debug.print("{s}- {s}\n", .{ indent, @tagName(node.tag) });
+        .inline_code,
+        .text => |span| {
+            std.debug.print("{s}- {s} ({s})\n", .{
+                indent,
+                @tagName(el.*),
+                tokenizer.buffer[span.start..span.end]
+            });
+        },
+        .line_break => {
+            std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
+        },
+        .heading => |node| {
+            std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
             for (node.children.items) |child| {
                 try printAst(allocator, &child, depth + 1, tokenizer);
             }
         },
-        .leaf => |leaf| {
-            if (leaf.tag == .text or leaf.tag == .code_literal) {
-                const token = &leaf.token;
-                std.debug.print("{s}- {s} ({s})\n", .{
-                    indent,
-                    @tagName(leaf.tag),
-                    token.slice(tokenizer.buffer),
-                });
-            } else {
-                std.debug.print("{s}- {s}\n", .{ indent, @tagName(leaf.tag) });
+        .paragraph => |node| {
+            std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
+            for (node.children.items) |child| {
+                try printAst(allocator, &child, depth + 1, tokenizer);
             }
-        }
+        },
+        .url => |node| {
+            std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
+            for (node.children.items) |child| {
+                try printAst(allocator, &child, depth + 1, tokenizer);
+            }
+        },
+        .img => |node| {
+            std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
+            for (node.children.items) |child| {
+                try printAst(allocator, &child, depth + 1, tokenizer);
+            }
+        },
+        .block_code => |node| {
+            std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
+            for (node.children.items) |child| {
+                try printAst(allocator, &child, depth + 1, tokenizer);
+            }
+        },
+        .modifier => |node| {
+            std.debug.print("{s}- {s}({s})\n", .{ indent, @tagName(el.*), @tagName(node.tag) });
+            for (node.children.items) |child| {
+                try printAst(allocator, &child, depth + 1, tokenizer);
+            }
+        },
     }
 }

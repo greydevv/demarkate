@@ -4,6 +4,7 @@ const Tokenizer = @import("Tokenizer.zig");
 
 const Token = Tokenizer.Token;
 const Element = ast.Element;
+const Span = ast.Span;
 const Allocator = std.mem.Allocator;
 
 const Parser = @This();
@@ -142,31 +143,37 @@ fn parseBuiltIn(self: *Parser) !Element {
 }
 
 fn parseHeading(self: *Parser) !Element {
-    const metadata_el = Element.initLeaf(.metadata, self.eatToken());
-    errdefer metadata_el.deinit();
-
-    var children = Element.Node.Children.init(self.allocator);
-    errdefer children.deinit();
-
-    var content = try self.expectInlineUntilLineBreakOrEof();
-    const slice = try content.toOwnedSlice();
-    defer content.allocator.free(slice);
-
-    try children.append(metadata_el);
-    try children.appendSlice(slice);
-
-    return Element{
-        .node = .{
-            .tag = .heading,
-            .children = children,
+    const heading = Element{
+        .heading = .{
+            .children = std.ArrayList(Element).init(self.allocator)
         }
     };
+
+    return heading;
+    // const metadata_el = Element.initLeaf(.metadata, self.eatToken());
+    // errdefer metadata_el.deinit();
+    //
+    // var children = Element.Node.Children.init(self.allocator);
+    // errdefer children.deinit();
+    //
+    // var content = try self.expectInlineUntilLineBreakOrEof();
+    // const slice = try content.toOwnedSlice();
+    // defer content.allocator.free(slice);
+    //
+    // try children.append(metadata_el);
+    // try children.appendSlice(slice);
+    //
+    // return Element{
+    //     .node = .{
+    //         .tag = .heading,
+    //         .children = children,
+    //     }
+    // };
 }
 
 fn parseParagraph(self: *Parser) !Element {
     return Element{
-        .node = .{
-            .tag = .paragraph,
+        .paragraph = .{
             .children = try self.expectInlineUntilLineBreakOrEof()
         }
     };
@@ -174,9 +181,10 @@ fn parseParagraph(self: *Parser) !Element {
 
 fn expectInlineCode(self: *Parser) !Element {
     const open_backtick_token = self.eatToken();
-
-    var code_el = Element.initNode(self.allocator, .inline_code);
-    errdefer code_el.deinit();
+    var span = Span{
+        .start = self.tokens[self.tok_i].loc.start_index,
+        .end = self.tokens[self.tok_i].loc.end_index,
+    };
 
     while (true) {
         const token = self.tokens[self.tok_i];
@@ -193,14 +201,15 @@ fn expectInlineCode(self: *Parser) !Element {
                     }
                 }
 
-                const child = Element.initLeaf(.code_literal, token);
-                _ = try code_el.addChild(child);
+                span.end = token.loc.end_index;
                 _ = self.eatToken();
             },
         }
     }
 
-    return code_el;
+    return Element{
+        .inline_code = span
+    };
 }
 
 fn parseBlockCode(self: *Parser) !Element {
@@ -209,7 +218,12 @@ fn parseBlockCode(self: *Parser) !Element {
     }
 
     const open_backtick_token = self.eatToken();
-    var code_el = Element.initNode(self.allocator, .block_code);
+
+    var code_el = Element{
+        .block_code = .{
+            .children = std.ArrayList(Element).init(self.allocator)
+        },
+    };
     errdefer code_el.deinit();
 
     while (true) {
@@ -217,7 +231,13 @@ fn parseBlockCode(self: *Parser) !Element {
         switch (token.tag) {
             .eof => return self.err(.unterminated_block_code, open_backtick_token),
             .newline => {
-                const child = Element.initLeaf(.line_break, token);
+                const child = Element{
+                    .line_break = .{
+                        .start = token.loc.start_index,
+                        .end = token.loc.end_index,
+                    }
+                };
+
                 _ = try code_el.addChild(child);
                 _ = self.eatToken();
             },
@@ -232,7 +252,13 @@ fn parseBlockCode(self: *Parser) !Element {
                     }
                 }
 
-                const child = Element.initLeaf(.code_literal, token);
+                const child = Element{
+                    .inline_code = .{
+                        .start = token.loc.start_index,
+                        .end = token.loc.end_index,
+                    }
+                };
+
                 _ = try code_el.addChild(child);
                 _ = self.eatToken();
             }
@@ -249,10 +275,15 @@ fn expectLineBreak(self: *Parser) !Element {
     }
 
     _ = self.eatToken();
-    return Element.initLeaf(.line_break, token);
+    return Element{
+        .line_break = .{
+            .start = token.loc.start_index,
+            .end = token.loc.end_index,
+        }
+    };
 }
 
-fn expectInlineUntilLineBreakOrEof(self: *Parser) !Element.Node.Children {
+fn expectInlineUntilLineBreakOrEof(self: *Parser) !std.ArrayList(Element) {
     var children = std.ArrayList(Element).init(self.allocator);
     errdefer children.deinit();
 
@@ -277,11 +308,10 @@ fn expectInlineUntilLineBreakOrEof(self: *Parser) !Element.Node.Children {
 /// Parses top-level inline elements.
 fn parseInline(self: *Parser) !Element {
     const token = self.tokens[self.tok_i];
-    switch (token.tag) {
-        .asterisk,
-        .underscore,
-        .tilde => return self.parseInlineModifier(),
-        else => return self.parseTerminalInline()
+    if (modifierTagOrNull(token.tag)) |_| {
+        return self.parseInlineModifier();
+    } else {
+        return self.parseTerminalInline();
     }
 }
 
@@ -300,86 +330,98 @@ fn parseTerminalInline(self: *Parser) !Element {
         .pound,
         .literal_text => {
             _ = self.eatToken();
-            return Element.initLeaf(.text, token);
+            return Element{
+                .text = .{
+                    .start = token.loc.start_index,
+                    .end = token.loc.end_index,
+                }
+            };
         },
         else => return self.err(.unexpected_token, token),
     }
 }
 
 fn parseInlineModifier(self: *Parser) !Element {
-    // TODO: throw error if closing modifier starts on newline, but opening doesn't
-    // (and vice-versa)
-
-    const initial_modifier_tag = elementTagFromTokenTag(self.tokens[self.tok_i].tag);
-
-    var top_node = Element.initNode(self.allocator, initial_modifier_tag);
-    errdefer top_node.deinit();
+    var outer_most_modifier = Element{
+        .modifier = .{
+            .children = std.ArrayList(Element).init(self.allocator),
+            .tag = modifierTag(self.tokens[self.tok_i].tag)
+        }
+    };
+    errdefer outer_most_modifier.deinit();
 
     var el_stack = std.ArrayList(*Element).init(self.allocator);
-    var tag_stack = std.ArrayList(Element.Node.Tag).init(self.allocator);
+    var tag_stack = std.ArrayList(Element.Modifier.Tag).init(self.allocator);
     var token_stack = std.ArrayList(Token).init(self.allocator);
     defer el_stack.deinit();
     defer tag_stack.deinit();
     defer token_stack.deinit();
 
-    try el_stack.append(&top_node);
-    try tag_stack.append(initial_modifier_tag);
+    try el_stack.append(&outer_most_modifier);
+    try tag_stack.append(outer_most_modifier.modifier.tag);
     try token_stack.append(self.eatToken());
 
-    var top_of_stack = &top_node;
+    var open_modifier = &outer_most_modifier;
     while (el_stack.items.len > 0) {
         const token = self.tokens[self.tok_i];
 
-        switch (token.tag) {
-            .asterisk,
-            .underscore,
-            .tilde => |tag| {
-                const modifier_tag = elementTagFromTokenTag(tag);
-                const modifier_token = self.eatToken();
+        if (modifierTagOrNull(token.tag)) |modifier_tag| {
+            const modifier_token = self.eatToken();
+            const tags_equal = tag_stack.getLast() == modifier_tag;
+            const len_equal = token_stack.getLast().len() == modifier_token.len();
+            if (tags_equal and len_equal) {
+                // modifier closed, pop from stack
+                _ = el_stack.pop();
+                _ = tag_stack.pop();
+                _ = token_stack.pop();
 
-                const tags_equal = tag_stack.getLast() == modifier_tag;
-                const len_equal = token_stack.getLast().len() == modifier_token.len();
-                if (tags_equal and len_equal) {
-                    // modifier closed, pop from stack
-                    _ = el_stack.pop();
-                    _ = tag_stack.pop();
-                    _ = token_stack.pop();
-
-                    if (el_stack.items.len > 0) {
-                        top_of_stack = el_stack.getLast();
-                    }
-                } else {
-                    const new_top = try top_of_stack.addChild(Element.initNode(
-                        self.allocator,
-                        modifier_tag,
-                    ));
-
-                    top_of_stack = new_top;
-
-                    // modifier opened, push onto stack
-                    try el_stack.append(new_top);
-                    try tag_stack.append(modifier_tag);
-                    try token_stack.append(modifier_token);
+                if (el_stack.items.len > 0) {
+                    open_modifier = el_stack.getLast();
                 }
-            },
+            } else {
+                // new modifier opened, push it to stack
+                const el = Element{
+                    .modifier = .{
+                        .children = std.ArrayList(Element).init(self.allocator),
+                        .tag = modifier_tag
+                    }
+                };
+
+                const child_modifier = try open_modifier.addChild(el);
+                open_modifier = child_modifier;
+
+                try el_stack.append(child_modifier);
+                try tag_stack.append(modifier_tag);
+                try token_stack.append(modifier_token);
+            }
+
+            continue;
+        }
+
+        switch (token.tag) {
             .newline,
             .eof => return self.err(.unterminated_modifier, token_stack.getLast()),
             else => {
                 const child_el = try self.parseTerminalInline();
-                _ = try top_of_stack.addChild(child_el);
+                _ = try open_modifier.addChild(child_el);
             }
         }
     }
 
-    return top_node;
+    return outer_most_modifier;
 }
 
-fn elementTagFromTokenTag(tag: Token.Tag) Element.Node.Tag {
+fn modifierTag(tag: Token.Tag) Element.Modifier.Tag {
+    return modifierTagOrNull(tag) orelse unreachable;
+}
+
+fn modifierTagOrNull(tag: Token.Tag) ?Element.Modifier.Tag {
     return switch (tag) {
         .asterisk => .bold,
-        .underscore => .italic,
+        .forward_slash => .italic,
+        .underscore => .underline,
         .tilde => .strikethrough,
-        else => unreachable
+        else => null
     };
 }
 
@@ -466,14 +508,14 @@ test "parses modifier" {
         .eof();
     defer source_builder.free(source);
 
-    const expected_ast = ast_builder
-        .node(.paragraph, ast_builder
-            .leaf(.text, source[0])
-            .node(.bold, ast_builder
-                .leaf(.text, source[2])
+    const expected_ast = AstBuilder.init()
+        .paragraph(AstBuilder.init()
+            .text(source[0])
+            .modifier(.bold, AstBuilder.init()
+                .text(source[2])
                 .build()
             )
-            .leaf(.text, source[4])
+            .text(source[4])
             .build()
         )
         .build();
@@ -493,19 +535,29 @@ test "parses modifier" {
 
 test "parses nested modifiers" {
     const source = source_builder
-        .tok(.underscore, "_")
         .tok(.asterisk, "*")
+        .tok(.forward_slash, "/")
+        .tok(.underscore, "_")
+        .tok(.tilde, "~")
         .tok(.literal_text, "a")
-        .tok(.asterisk, "*")
+        .tok(.tilde, "~")
         .tok(.underscore, "_")
+        .tok(.forward_slash, "/")
+        .tok(.asterisk, "*")
         .eof();
     defer source_builder.free(source);
 
-    const expected_ast = ast_builder
-        .node(.paragraph, ast_builder
-            .node(.italic, ast_builder
-                .node(.bold, ast_builder
-                    .leaf(.text, source[2])
+    const expected_ast = AstBuilder.init()
+        .paragraph(AstBuilder.init()
+            .modifier(.bold, AstBuilder.init()
+                .modifier(.italic, AstBuilder.init()
+                    .modifier(.underline, AstBuilder.init()
+                        .modifier(.strikethrough, AstBuilder.init()
+                            .text(source[4])
+                            .build()
+                        )
+                        .build()
+                    )
                     .build()
                 )
                 .build()
@@ -535,11 +587,11 @@ test "parses pound as literal text" {
         .eof();
     defer source_builder.free(source);
 
-    const expected_ast = ast_builder
-        .node(.paragraph, ast_builder
-            .leaf(.text, source[0])
-            .leaf(.text, source[1])
-            .leaf(.text, source[2])
+    const expected_ast = AstBuilder.init()
+        .paragraph(AstBuilder.init()
+            .text(source[0])
+            .text(source[1])
+            .text(source[2])
             .build()
         )
         .build();
@@ -559,6 +611,7 @@ test "parses pound as literal text" {
 
 const source_builder = @import("testing/source_builder.zig");
 const ast_builder = @import("testing/ast_builder.zig");
+const AstBuilder = ast_builder.AstBuilder;
 
 fn expectError(source: []const Token, expected_err: Error.Tag, expected_token: Token) !void {
     var parser = Parser.init(
