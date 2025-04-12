@@ -150,25 +150,6 @@ fn parseHeading(self: *Parser) !Element {
     };
 
     return heading;
-    // const metadata_el = Element.initLeaf(.metadata, self.eatToken());
-    // errdefer metadata_el.deinit();
-    //
-    // var children = Element.Node.Children.init(self.allocator);
-    // errdefer children.deinit();
-    //
-    // var content = try self.expectInlineUntilLineBreakOrEof();
-    // const slice = try content.toOwnedSlice();
-    // defer content.allocator.free(slice);
-    //
-    // try children.append(metadata_el);
-    // try children.appendSlice(slice);
-    //
-    // return Element{
-    //     .node = .{
-    //         .tag = .heading,
-    //         .children = children,
-    //     }
-    // };
 }
 
 fn parseParagraph(self: *Parser) !Element {
