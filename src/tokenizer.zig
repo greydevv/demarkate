@@ -35,10 +35,6 @@ pub const Token = struct {
     pub fn len(self: *const Token) usize {
         return self.loc.end_index - self.loc.start_index;
     }
-
-    pub fn slice(self: *const Token, buffer: [:0]const u8) []const u8 {
-        return buffer[self.loc.start_index..self.loc.end_index];
-    }
 };
 
 buffer: [:0]const u8,
