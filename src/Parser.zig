@@ -329,7 +329,6 @@ fn parseTerminalInline(self: *Parser) !Element {
                 return self.err(.unexpected_token, token);
             }
         },
-        .bang,
         .pound,
         .literal_text => {
             _ = self.eatToken();

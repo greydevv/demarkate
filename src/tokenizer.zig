@@ -15,7 +15,6 @@ pub const Token = struct {
         forward_slash,
         underscore,
         tilde,
-        bang,
         semicolon,
         ampersat,
         close_angle,
@@ -112,8 +111,6 @@ fn nextStructural(self: *Tokenizer) ?Token {
                 self.index += 1;
             }
         },
-        '!' => {
-            token.tag = .bang;
             self.index += 1;
         },
         ';' => {
