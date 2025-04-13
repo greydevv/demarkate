@@ -217,6 +217,33 @@ fn parseAttributes(self: *Parser) !std.ArrayList(Span) {
     return attrs;
 }
 
+fn eatUntilTokens(self: *Parser, comptime tags: []const Token.Tag) !?Span {
+    var span: ?Span = null;
+    var token = self.tokens[self.tok_i];
+    blk: while (true) {
+        inline for (tags) |stop_tag| {
+            if (token.tag == stop_tag) {
+                break :blk;
+            }
+        }
+
+        std.debug.print("{s}\n", .{ @tagName(token.tag) });
+
+        if (token.tag == .eof) {
+            return self.err(.unexpected_token, token);
+        }
+
+        if (span) |*some_span| {
+            some_span.end = token.loc.end_index;
+        } else {
+            span = Span.from(token);
+        }
+
+        token = self.nextToken();
+    }
+
+    return span;
+}
 
 fn parseBlockCode(self: *Parser) !Element {
     var code = Element{
@@ -227,39 +254,23 @@ fn parseBlockCode(self: *Parser) !Element {
     errdefer code.deinit();
 
     while (true) {
-        var token = self.tokens[self.tok_i];
-        var span: ?Span = null;
-        line: while (true) {
-            switch (token.tag) {
-                .newline,
-                .close_paren => break :line,
-                else => {
-                    _ = self.eatToken();
-                    if (span) |*some_span| {
-                        some_span.end = token.loc.end_index;
-                    } else {
-                        span = Span.from(token);
-                    }
-                }
-            }
-
-            token = self.tokens[self.tok_i];
-        }
-
+        const span = try self.eatUntilTokens(&.{ .newline, .close_paren });
         if (span) |some_span| {
             _ = try code.addChild(Element{
                 .code_literal = some_span
             });
         }
 
-        if (token.tag == .newline) {
-            const line_break = try self.expectLineBreak();
-            _ = try code.addChild(line_break);
-        }
-
-        if (token.tag == .close_paren) {
-            _ = self.eatToken();
-            break;
+        switch (self.tokens[self.tok_i].tag) {
+            .newline => {
+                const line_break = try self.expectLineBreak();
+                _ = try code.addChild(line_break);
+            },
+            .close_paren => {
+                _ = self.eatToken();
+                break;
+            },
+            else => unreachable,
         }
     }
 
@@ -480,6 +491,15 @@ fn modifierTagOrNull(tag: Token.Tag) ?Element.Modifier.Tag {
         .tilde => .strikethrough,
         else => null
     };
+}
+
+fn nextToken(self: *Parser) Token {
+    if (self.tok_i == self.tokens.len - 1) {
+        return self.tokens[self.tok_i];
+    }
+
+    self.tok_i += 1;
+    return self.tokens[self.tok_i];
 }
 
 fn eatToken(self: *Parser) Token {
