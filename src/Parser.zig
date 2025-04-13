@@ -76,14 +76,16 @@ pub const Error = struct {
 };
 
 allocator: Allocator,
+source: [:0]const u8,
 tokens: []const Token,
 tok_i: usize,
 elements: std.ArrayList(Element),
 errors: std.ArrayList(Error),
 
-pub fn init(allocator: Allocator, tokens: []const Token) Parser {
+pub fn init(allocator: Allocator, source: [:0]const u8, tokens: []const Token) Parser {
     return .{
         .allocator = allocator,
+        .source = source,
         .tokens = tokens,
         .tok_i = 0,
         // TODO: use assume capacity strategy that zig uses, ((tokens.len + 2) / 2),

@@ -28,7 +28,7 @@ pub fn main() !void {
         if (token.tag == .eof) break;
     }
 
-    var parser = Parser.init(allocator, tokens.items);
+    var parser = Parser.init(allocator, buffer[0..:0], tokens.items);
     defer parser.deinit();
 
     parser.parse() catch {
@@ -82,7 +82,7 @@ fn printAst(allocator: Allocator, el: *const Element, depth: u32, tokenizer: *co
             std.debug.print("{s}- {s} ({s})\n", .{
                 indent,
                 @tagName(el.*),
-                tokenizer.buffer[span.start..span.end]
+                span.slice(tokenizer.buffer)
             });
         },
         .line_break => {
