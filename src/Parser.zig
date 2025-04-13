@@ -90,8 +90,8 @@ pub fn init(allocator: Allocator, source: [:0]const u8, tokens: []const Token) P
         .tok_i = 0,
         // TODO: use assume capacity strategy that zig uses, ((tokens.len + 2) / 2),
         // but modified for markdown ratio
-        .elements = std.ArrayList(Element).init(allocator),
-        .errors = std.ArrayList(Error).init(allocator),
+        .elements = .init(allocator),
+        .errors = .init(allocator),
     };
 }
 
@@ -134,7 +134,7 @@ pub fn parse(self: *Parser) !void {
 }
 
 fn parseBuiltIn(self: *Parser) !Element {
-    _ = self.eatToken();
+    _ = self.nextToken();
 
     var span = Span.from(self.tokens[self.tok_i]);
     while (true) {
@@ -149,7 +149,7 @@ fn parseBuiltIn(self: *Parser) !Element {
             .eof => return self.err(.unexpected_token, token),
             else => {
                 span.end = token.loc.end_index;
-                _ = self.eatToken();
+                _ = self.nextToken();
             }
         }
     }
@@ -165,7 +165,7 @@ fn parseBuiltIn(self: *Parser) !Element {
         }
     }
 
-    _ = self.eatToken();
+    _ = self.nextToken();
     // TODO: Throw error for empty modifier
 
     std.log.info("Parsing {s}", .{ span.slice(self.source) });
@@ -189,13 +189,13 @@ fn parseAttributes(self: *Parser) !std.ArrayList(Span) {
                     break :attr;
                 },
                 .colon => {
-                    _ = self.eatToken();
+                    _ = self.nextToken();
                     break :attr;
                 },
                 .newline,
                 .eof => return self.err(.unterminated_modifier, token),
                 else => {
-                    _ = self.eatToken();
+                    _ = self.nextToken();
                     if (span) |*some_span| {
                         some_span.end = token.loc.end_index;
                     } else {
@@ -267,7 +267,7 @@ fn parseBlockCode(self: *Parser) !Element {
                 _ = try code.addChild(line_break);
             },
             .close_paren => {
-                _ = self.eatToken();
+                _ = self.nextToken();
                 break;
             },
             else => unreachable,
@@ -278,7 +278,9 @@ fn parseBlockCode(self: *Parser) !Element {
 }
 
 fn parseHeading(self: *Parser) !Element {
-    const level = self.eatToken().len();
+    const level = self.tokens[self.tok_i].len();
+    _ = self.nextToken();
+
     return Element{
         .heading = .{
             .level = level,
@@ -296,7 +298,9 @@ fn parseParagraph(self: *Parser) !Element {
 }
 
 fn expectInlineCode(self: *Parser) !Element {
-    const open_backtick_token = self.eatToken();
+    const open_backtick_token = self.tokens[self.tok_i];
+    _ = self.nextToken();
+
     var span = Span{
         .start = self.tokens[self.tok_i].loc.start_index,
         .end = self.tokens[self.tok_i].loc.end_index,
@@ -310,7 +314,7 @@ fn expectInlineCode(self: *Parser) !Element {
             else => {
                 if (token.tag == .backtick) {
                     if (token.len() == open_backtick_token.len()) {
-                        _ = self.eatToken();
+                        _ = self.nextToken();
                         break;
                     } else {
                         return self.err(.unexpected_token, token);
@@ -318,7 +322,7 @@ fn expectInlineCode(self: *Parser) !Element {
                 }
 
                 span.end = token.loc.end_index;
-                _ = self.eatToken();
+                _ = self.nextToken();
             },
         }
     }
@@ -334,21 +338,10 @@ fn expectLineBreak(self: *Parser) !Element {
         return self.err(.unexpected_token, token);
     }
 
-    _ = self.eatToken();
+    _ = self.nextToken();
     return Element{
         .line_break = Span.from(token)
     };
-}
-
-fn spanUntilLineBreakOrEof(self: *Parser) !Span {
-    var token = self.tokens[self.tok_i];
-    var span = Span.from(self.tokens[self.tok_i]);
-    while (token.tag != .newline and token.tag != .eof) {
-        span.end = self.eatToken().loc.start_index;
-        token = self.tokens[self.tok_i];
-    }
-
-    return span;
 }
 
 fn expectInlineUntilLineBreakOrEof(self: *Parser) !std.ArrayList(Element) {
@@ -361,7 +354,6 @@ fn expectInlineUntilLineBreakOrEof(self: *Parser) !std.ArrayList(Element) {
         errdefer child_el.deinit();
 
         _ = try children.append(child_el);
-
         token = self.tokens[self.tok_i];
     }
 
@@ -373,7 +365,7 @@ fn expectInlineUntilLineBreakOrEof(self: *Parser) !std.ArrayList(Element) {
 }
 
 
-/// Parses top-level inline elements.
+/// Parses inline elements.
 fn parseInline(self: *Parser) !Element {
     const token = self.tokens[self.tok_i];
     if (modifierTagOrNull(token.tag)) |_| {
@@ -383,7 +375,7 @@ fn parseInline(self: *Parser) !Element {
     }
 }
 
-/// A variant of parseInline that does not recurse.
+/// Parses leaf inline elements that are guaranteed to not recurse.
 fn parseTerminalInline(self: *Parser) !Element {
     const token = self.tokens[self.tok_i];
     switch (token.tag) {
@@ -397,7 +389,7 @@ fn parseTerminalInline(self: *Parser) !Element {
         .colon,
         .pound,
         .literal_text => {
-            _ = self.eatToken();
+            _ = self.nextToken();
             return Element{
                 .text = .{
                     .start = token.loc.start_index,
@@ -412,7 +404,7 @@ fn parseTerminalInline(self: *Parser) !Element {
 fn parseInlineModifier(self: *Parser) !Element {
     var outer_most_modifier = Element{
         .modifier = .{
-            .children = std.ArrayList(Element).init(self.allocator),
+            .children = .init(self.allocator),
             .tag = modifierTag(self.tokens[self.tok_i].tag)
         }
     };
@@ -427,16 +419,16 @@ fn parseInlineModifier(self: *Parser) !Element {
 
     try el_stack.append(&outer_most_modifier);
     try tag_stack.append(outer_most_modifier.modifier.tag);
-    try token_stack.append(self.eatToken());
+    try token_stack.append(self.tokens[self.tok_i]);
+    _ = self.nextToken();
 
     var open_modifier = &outer_most_modifier;
     while (el_stack.items.len > 0) {
         const token = self.tokens[self.tok_i];
 
         if (modifierTagOrNull(token.tag)) |modifier_tag| {
-            const modifier_token = self.eatToken();
             const tags_equal = tag_stack.getLast() == modifier_tag;
-            const len_equal = token_stack.getLast().len() == modifier_token.len();
+            const len_equal = token_stack.getLast().len() == token.len();
             if (tags_equal and len_equal) {
                 // modifier closed, pop from stack
                 _ = el_stack.pop();
@@ -450,7 +442,7 @@ fn parseInlineModifier(self: *Parser) !Element {
                 // new modifier opened, push it to stack
                 const el = Element{
                     .modifier = .{
-                        .children = std.ArrayList(Element).init(self.allocator),
+                        .children = .init(self.allocator),
                         .tag = modifier_tag
                     }
                 };
@@ -460,9 +452,10 @@ fn parseInlineModifier(self: *Parser) !Element {
 
                 try el_stack.append(child_modifier);
                 try tag_stack.append(modifier_tag);
-                try token_stack.append(modifier_token);
+                try token_stack.append(token);
             }
 
+            _ = self.nextToken();
             continue;
         }
 
@@ -500,15 +493,6 @@ fn nextToken(self: *Parser) Token {
 
     self.tok_i += 1;
     return self.tokens[self.tok_i];
-}
-
-fn eatToken(self: *Parser) Token {
-    if (self.tok_i == self.tokens.len - 1) {
-        return self.tokens[self.tok_i];
-    }
-
-    self.tok_i += 1;
-    return self.tokens[self.tok_i - 1];
 }
 
 fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemory } {
