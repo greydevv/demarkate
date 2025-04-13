@@ -39,6 +39,7 @@ pub const Element = union(enum) {
     },
     modifier: Modifier,
     inline_code: Span,
+    code_literal: Span,
     text: Span,
     line_break: Span,
 
@@ -53,25 +54,6 @@ pub const Element = union(enum) {
             underline
         };
     };
-
-    // pub fn initNode(allocator: Allocator, tag: Node.Tag) Element {
-    //     return .{
-    //         .node = Node{
-    //             .tag = tag,
-    //             // TODO: maybe init capacity?
-    //             .children = Node.Children.init(allocator)
-    //         }
-    //     };
-    // } 
-    //
-    // pub fn initLeaf(tag: Leaf.Tag, token: Token) Element {
-    //     return .{
-    //         .leaf = Leaf{
-    //             .tag = tag,
-    //             .token = token
-    //         }
-    //     };
-    // }
 
     pub fn deinit(self: *const Element) void {
         switch (self.*) {
@@ -91,7 +73,7 @@ pub const Element = union(enum) {
                 deinitArrayListAndItems(el);
             },
             .block_code => |*el| {
-                el.children.deinit();
+                deinitArrayListAndItems(el);
             },
             else => {}
         }
@@ -127,7 +109,7 @@ pub const Element = union(enum) {
                     },
                     else => unreachable,
                 },
-            else => @compileError("Nothing accepts " ++ @typeName(@TypeOf(child)))
+            else => @compileError("Unexpected child type '" ++ @typeName(@TypeOf(child)) ++ "'")
         };
     }
 

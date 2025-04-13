@@ -136,12 +136,80 @@ pub fn parse(self: *Parser) !void {
 fn parseBuiltIn(self: *Parser) !Element {
     _ = self.eatToken();
 
-    const token = self.tokens[self.tok_i];
-    if (token.tag != .literal_text) {
-        return self.err(.unexpected_token, token);
+    var span = Span.from(self.tokens[self.tok_i]);
+    while (true) {
+        const token = self.tokens[self.tok_i];
+        switch (token.tag) {
+            .open_paren => {
+                _ = self.eatToken();
+                break;
+            },
+            // TODO: .colon => parse attributes
+            .newline,
+            .eof => return self.err(.unexpected_token, token),
+            else => {
+                span.end = token.loc.end_index;
+                _ = self.eatToken();
+            }
+        }
+    }
+
+    // TODO: Throw error for empty modifier
+
+    std.log.info("Parsing {s}", .{ span.slice(self.source) });
+    if (std.mem.eql(u8, span.slice(self.source), "code")) {
+        return self.parseBlockCode();
     }
 
     unreachable;
+}
+
+fn parseBlockCode(self: *Parser) !Element {
+    var code = Element{
+        .block_code = .{
+            .children = .init(self.allocator)
+        }
+    };
+    errdefer code.deinit();
+
+    while (true) {
+        var token = self.tokens[self.tok_i];
+        var span: ?Span = null;
+        line: while (true) {
+            switch (token.tag) {
+                .newline,
+                .close_paren => break :line,
+                else => {
+                    _ = self.eatToken();
+                    if (span) |*some_span| {
+                        some_span.end = token.loc.end_index;
+                    } else {
+                        span = Span.from(token);
+                    }
+                }
+            }
+
+            token = self.tokens[self.tok_i];
+        }
+
+        if (span) |some_span| {
+            _ = try code.addChild(Element{
+                .code_literal = some_span
+            });
+        }
+
+        if (token.tag == .newline) {
+            const line_break = try self.expectLineBreak();
+            _ = try code.addChild(line_break);
+        }
+
+        if (token.tag == .close_paren) {
+            _ = self.eatToken();
+            break;
+        }
+    }
+
+    return code;
 }
 
 fn parseHeading(self: *Parser) !Element {
@@ -195,62 +263,6 @@ fn expectInlineCode(self: *Parser) !Element {
     };
 }
 
-fn parseBlockCode(self: *Parser) !Element {
-    if (self.tok_i > 0 and self.tokens[self.tok_i - 1].tag != .newline) {
-        return self.err(.no_line_break_before_block_code, self.tokens[self.tok_i]);
-    }
-
-    const open_backtick_token = self.eatToken();
-
-    var code_el = Element{
-        .block_code = .{
-            .children = std.ArrayList(Element).init(self.allocator)
-        },
-    };
-    errdefer code_el.deinit();
-
-    while (true) {
-        const token = self.tokens[self.tok_i];
-        switch (token.tag) {
-            .eof => return self.err(.unterminated_block_code, open_backtick_token),
-            .newline => {
-                const child = Element{
-                    .line_break = .{
-                        .start = token.loc.start_index,
-                        .end = token.loc.end_index,
-                    }
-                };
-
-                _ = try code_el.addChild(child);
-                _ = self.eatToken();
-            },
-            else => {
-                if (token.tag == .backtick and token.len() == open_backtick_token.len()) {
-                    const previous_token = self.tokens[self.tok_i - 1];
-                    if (previous_token.tag == .newline) {
-                        _ = self.eatToken();
-                        break;
-                    } else {
-                        return self.err(.no_line_break_before_block_code, token);
-                    }
-                }
-
-                const child = Element{
-                    .inline_code = .{
-                        .start = token.loc.start_index,
-                        .end = token.loc.end_index,
-                    }
-                };
-
-                _ = try code_el.addChild(child);
-                _ = self.eatToken();
-            }
-        }
-    }
-
-    return code_el;
-}
-
 fn expectLineBreak(self: *Parser) !Element {
     const token = self.tokens[self.tok_i];
     if (token.tag != .newline) {
@@ -259,11 +271,19 @@ fn expectLineBreak(self: *Parser) !Element {
 
     _ = self.eatToken();
     return Element{
-        .line_break = .{
-            .start = token.loc.start_index,
-            .end = token.loc.end_index,
-        }
+        .line_break = Span.from(token)
     };
+}
+
+fn spanUntilLineBreakOrEof(self: *Parser) !Span {
+    var token = self.tokens[self.tok_i];
+    var span = Span.from(self.tokens[self.tok_i]);
+    while (token.tag != .newline and token.tag != .eof) {
+        span.end = self.eatToken().loc.start_index;
+        token = self.tokens[self.tok_i];
+    }
+
+    return span;
 }
 
 fn expectInlineUntilLineBreakOrEof(self: *Parser) !std.ArrayList(Element) {

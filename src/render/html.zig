@@ -182,9 +182,11 @@ pub const Renderer = struct {
                 try self.appendSpan(span);
                 try self.closeTag("code");
             },
+            .code_literal,
             .text => |span| try self.appendSpan(span),
             .line_break => try self.openTag("br"),
-            else => unreachable,
+            .url,
+            .img => unreachable,
         };
     }
 

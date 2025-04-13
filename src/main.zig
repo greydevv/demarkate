@@ -78,10 +78,14 @@ fn printAst(allocator: Allocator, el: *const Element, depth: u32, tokenizer: *co
 
     switch(el.*) {
         .inline_code,
+        .code_literal,
         .text => |span| {
-            std.debug.print("{s}- {s} ({s})\n", .{
+            std.debug.print("{s}- {s}\n", .{
                 indent,
-                @tagName(el.*),
+                @tagName(el.*)
+            });
+            std.debug.print("  {s}  {s}\n", .{
+                indent,
                 span.slice(tokenizer.buffer)
             });
         },
