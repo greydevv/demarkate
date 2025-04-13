@@ -47,12 +47,12 @@ pub fn main() !void {
         try printAst(allocator, &el, 0, &tokenizer);
     }
 
-    var renderer = HtmlRenderer.init(allocator, buffer[0..:0]);
-    defer renderer.deinit();
-
-    try renderer.render(parser.elements.items);
-
-    std.debug.print("{s}\n", .{ renderer.buffer.items });
+    // var renderer = HtmlRenderer.init(allocator, buffer[0..:0]);
+    // defer renderer.deinit();
+    //
+    // try renderer.render(parser.elements.items);
+    //
+    // std.debug.print("{s}\n", .{ renderer.buffer.items });
 }
 
 fn readFileAlloc(allocator: Allocator, file_path: []const u8) ![:0]u8 {
@@ -127,6 +127,6 @@ fn printAst(allocator: Allocator, el: *const Element, depth: u32, tokenizer: *co
             for (node.children.items) |child| {
                 try printAst(allocator, &child, depth + 1, tokenizer);
             }
-        },
+        }
     }
 }

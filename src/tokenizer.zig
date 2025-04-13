@@ -15,6 +15,8 @@ pub const Token = struct {
         forward_slash,
         underscore,
         tilde,
+        comma,
+        colon,
         semicolon,
         ampersat,
         close_angle,
@@ -107,10 +109,14 @@ fn nextStructural(self: *Tokenizer) ?Token {
         },
         '\n' => {
             token.tag = .newline;
-            while (self.buffer[self.index] == '\n') {
-                self.index += 1;
-            }
+            self.index += 1;
         },
+        ',' => {
+            token.tag = .comma;
+            self.index += 1;
+        },
+        ':' => {
+            token.tag = .colon;
             self.index += 1;
         },
         ';' => {

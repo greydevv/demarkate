@@ -140,8 +140,8 @@ fn parseBuiltIn(self: *Parser) !Element {
     while (true) {
         const token = self.tokens[self.tok_i];
         switch (token.tag) {
+            .colon,
             .open_paren => {
-                _ = self.eatToken();
                 break;
             },
             // TODO: .colon => parse attributes
@@ -154,6 +154,18 @@ fn parseBuiltIn(self: *Parser) !Element {
         }
     }
 
+
+    if (self.tokens[self.tok_i].tag == .colon) {
+        const attrs = try self.parseAttributes();
+        defer attrs.deinit();
+
+        std.log.info("Parsed attributes!", .{});
+        for (attrs.items) |attr_span| {
+            std.log.info("  {s}", .{ attr_span.slice(self.source) });
+        }
+    }
+
+    _ = self.eatToken();
     // TODO: Throw error for empty modifier
 
     std.log.info("Parsing {s}", .{ span.slice(self.source) });
@@ -163,6 +175,48 @@ fn parseBuiltIn(self: *Parser) !Element {
 
     unreachable;
 }
+
+fn parseAttributes(self: *Parser) !std.ArrayList(Span) {
+    var attrs = std.ArrayList(Span).init(self.allocator);
+    errdefer attrs.deinit();
+
+    while (true) {
+        var span: ?Span = null;
+        attr: while (true) {
+            const token = self.tokens[self.tok_i];
+            switch (token.tag) {
+                .open_paren => {
+                    break :attr;
+                },
+                .colon => {
+                    _ = self.eatToken();
+                    break :attr;
+                },
+                .newline,
+                .eof => return self.err(.unterminated_modifier, token),
+                else => {
+                    _ = self.eatToken();
+                    if (span) |*some_span| {
+                        some_span.end = token.loc.end_index;
+                    } else {
+                        span = Span.from(token);
+                    }
+                }
+            }
+        }
+
+        if (span) |some_span| {
+            try attrs.append(some_span);
+        }
+
+        if (self.tokens[self.tok_i].tag == .open_paren) {
+            break;
+        }
+    }
+
+    return attrs;
+}
+
 
 fn parseBlockCode(self: *Parser) !Element {
     var code = Element{
@@ -329,6 +383,7 @@ fn parseTerminalInline(self: *Parser) !Element {
                 return self.err(.unexpected_token, token);
             }
         },
+        .colon,
         .pound,
         .literal_text => {
             _ = self.eatToken();
