@@ -109,21 +109,8 @@ pub fn parse(self: *Parser) !void {
         const token = self.tokens[self.tok_i];
 
         const el = switch (token.tag) {
-            .pound => blk: {
-                if (token.len() > 6) {
-                    return self.err(.invalid_token, token);
-                }
-
-                break :blk try self.parseHeading();
-            },
+            .pound => try self.parseHeading(),
             .newline => try self.expectLineBreak(),
-            .backtick => blk: {
-                if (token.len() == 3) {
-                    break :blk try self.parseBlockCode();
-                } else {
-                    break :blk try self.parseInline();
-                }
-            },
             .ampersat => try self.parseBuiltIn(),
             .eof => return,
             else => try self.parseParagraph(),
