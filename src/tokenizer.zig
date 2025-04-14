@@ -15,7 +15,6 @@ pub const Token = struct {
         forward_slash,
         underscore,
         tilde,
-        comma,
         colon,
         semicolon,
         ampersat,
@@ -109,10 +108,6 @@ fn nextStructural(self: *Tokenizer) ?Token {
         },
         '\n' => {
             token.tag = .newline;
-            self.index += 1;
-        },
-        ',' => {
-            token.tag = .comma;
             self.index += 1;
         },
         ':' => {
