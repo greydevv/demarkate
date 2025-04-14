@@ -219,8 +219,8 @@ fn parseAttributes(self: *Parser) !std.ArrayList(Span) {
 
 fn eatUntilTokens(self: *Parser, comptime tags: []const Token.Tag) !?Span {
     var span: ?Span = null;
-    var token = self.tokens[self.tok_i];
     blk: while (true) {
+        const token = self.tokens[self.tok_i];
         inline for (tags) |stop_tag| {
             if (token.tag == stop_tag) {
                 break :blk;
@@ -239,7 +239,7 @@ fn eatUntilTokens(self: *Parser, comptime tags: []const Token.Tag) !?Span {
             span = Span.from(token);
         }
 
-        token = self.nextToken();
+        self.nextToken();
     }
 
     return span;
