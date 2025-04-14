@@ -168,6 +168,8 @@ fn parseBuiltIn(self: *Parser) !Element {
     _ = self.nextToken();
     // TODO: Throw error for empty modifier
 
+    // DON'T TAKE SLICE. INSTEAD ENCODE DIRECTIVE KEYWORDS INTO TOKENIZER AS
+    // THEIR OWN TOKEN. IS THIS THE RIGHT THING TO DO?
     std.log.info("Parsing {s}", .{ span.slice(self.source) });
     if (std.mem.eql(u8, span.slice(self.source), "code")) {
         return self.parseBlockCode();
@@ -368,7 +370,7 @@ fn expectInlineUntilLineBreakOrEof(self: *Parser) !std.ArrayList(Element) {
 /// Parses inline elements.
 fn parseInline(self: *Parser) !Element {
     const token = self.tokens[self.tok_i];
-    if (modifierTagOrNull(token.tag)) |_| {
+    if (modifierTagOrNull(token)) |_| {
         return self.parseInlineModifier();
     } else {
         return self.parseTerminalInline();
@@ -397,7 +399,9 @@ fn parseTerminalInline(self: *Parser) !Element {
                 }
             };
         },
-        else => return self.err(.unexpected_token, token),
+        else => {
+            return self.err(.unexpected_token, token);
+        },
     }
 }
 
@@ -405,41 +409,25 @@ fn parseInlineModifier(self: *Parser) !Element {
     var outer_most_modifier = Element{
         .modifier = .{
             .children = .init(self.allocator),
-            .tag = modifierTag(self.tokens[self.tok_i].tag)
+            .tag = modifierTag(self.eatToken())
         }
     };
-    errdefer outer_most_modifier.deinit();
 
     var el_stack = std.ArrayList(*Element).init(self.allocator);
-    var tag_stack = std.ArrayList(Element.Modifier.Tag).init(self.allocator);
-    var token_stack = std.ArrayList(Token).init(self.allocator);
     defer el_stack.deinit();
-    defer tag_stack.deinit();
-    defer token_stack.deinit();
 
     try el_stack.append(&outer_most_modifier);
-    try tag_stack.append(outer_most_modifier.modifier.tag);
-    try token_stack.append(self.tokens[self.tok_i]);
-    _ = self.nextToken();
 
-    var open_modifier = &outer_most_modifier;
+    var num_iters: u32 = 0;
     while (el_stack.items.len > 0) {
         const token = self.tokens[self.tok_i];
 
-        if (modifierTagOrNull(token.tag)) |modifier_tag| {
-            const tags_equal = tag_stack.getLast() == modifier_tag;
-            const len_equal = token_stack.getLast().len() == token.len();
-            if (tags_equal and len_equal) {
-                // modifier closed, pop from stack
+        if (modifierTagOrNull(token)) |modifier_tag| {
+            if (el_stack.getLast().modifier.tag == modifier_tag) {
+                // modifier CLOSED, pop from stack
                 _ = el_stack.pop();
-                _ = tag_stack.pop();
-                _ = token_stack.pop();
-
-                if (el_stack.items.len > 0) {
-                    open_modifier = el_stack.getLast();
-                }
             } else {
-                // new modifier opened, push it to stack
+                // modifier OPENED, push it to stack
                 const el = Element{
                     .modifier = .{
                         .children = .init(self.allocator),
@@ -447,52 +435,56 @@ fn parseInlineModifier(self: *Parser) !Element {
                     }
                 };
 
-                const child_modifier = try open_modifier.addChild(el);
-                open_modifier = child_modifier;
-
-                try el_stack.append(child_modifier);
-                try tag_stack.append(modifier_tag);
-                try token_stack.append(token);
+                const old_top = el_stack.getLast();
+                const new_top = try old_top.addChild(el);
+                try el_stack.append(new_top);
             }
 
-            _ = self.nextToken();
-            continue;
+            self.nextToken();
+        } else {
+            const child_el = try self.parseTerminalInline();
+            _ = try el_stack.getLast().addChild(child_el);
         }
 
-        switch (token.tag) {
-            .newline,
-            .eof => return self.err(.unterminated_modifier, token_stack.getLast()),
-            else => {
-                const child_el = try self.parseTerminalInline();
-                _ = try open_modifier.addChild(child_el);
-            }
+        if (num_iters == 20) {
+            unreachable;
+        } else {
+            num_iters += 1;
         }
     }
 
     return outer_most_modifier;
 }
 
-fn modifierTag(tag: Token.Tag) Element.Modifier.Tag {
-    return modifierTagOrNull(tag) orelse unreachable;
+fn modifierTag(token: Token) Element.Modifier.Tag {
+    return modifierTagOrNull(token) orelse unreachable;
 }
 
-fn modifierTagOrNull(tag: Token.Tag) ?Element.Modifier.Tag {
-    return switch (tag) {
+fn modifierTagOrNull(token: Token) ?Element.Modifier.Tag {
+    return switch (token.tag) {
         .asterisk => .bold,
         .forward_slash => .italic,
         .underscore => .underline,
         .tilde => .strikethrough,
-        else => null
+        else => null,
     };
 }
 
-fn nextToken(self: *Parser) Token {
+fn nextToken(self: *Parser) void {
+    if (self.tok_i == self.tokens.len - 1) {
+        return;
+    }
+
+    self.tok_i += 1;
+}
+
+fn eatToken(self: *Parser) Token {
     if (self.tok_i == self.tokens.len - 1) {
         return self.tokens[self.tok_i];
     }
 
     self.tok_i += 1;
-    return self.tokens[self.tok_i];
+    return self.tokens[self.tok_i - 1];
 }
 
 fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemory } {
