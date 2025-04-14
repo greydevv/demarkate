@@ -18,11 +18,12 @@ pub const Token = struct {
         colon,
         semicolon,
         ampersat,
+        open_angle,
         close_angle,
-        open_bracket,
-        close_bracket,
-        open_paren,
-        close_paren,
+        // open_bracket,
+        // close_bracket,
+        // open_paren,
+        // close_paren,
         unknown,
         eof
     };
@@ -122,26 +123,30 @@ fn nextStructural(self: *Tokenizer) ?Token {
             token.tag = .ampersat;
             self.index += 1;
         },
+        '<' => {
+            token.tag = .open_angle;
+            self.index += 1;
+        },
         '>' => {
             token.tag = .close_angle;
             self.index += 1;
         },
-        '[' => {
-            token.tag = .open_bracket;
-            self.index += 1;
-        },
-        ']' => {
-            token.tag = .close_bracket;
-            self.index += 1;
-        },
-        '(' => {
-            token.tag = .open_paren;
-            self.index += 1;
-        },
-        ')' => {
-            token.tag = .close_paren;
-            self.index += 1;
-        },
+        // '[' => {
+        //     token.tag = .open_bracket;
+        //     self.index += 1;
+        // },
+        // ']' => {
+        //     token.tag = .close_bracket;
+        //     self.index += 1;
+        // },
+        // '(' => {
+        //     token.tag = .open_paren;
+        //     self.index += 1;
+        // },
+        // ')' => {
+        //     token.tag = .close_paren;
+        //     self.index += 1;
+        // },
         else => return null
     }
 

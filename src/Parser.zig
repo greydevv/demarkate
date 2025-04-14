@@ -141,7 +141,7 @@ fn parseBuiltIn(self: *Parser) !Element {
         const token = self.tokens[self.tok_i];
         switch (token.tag) {
             .colon,
-            .open_paren => {
+            .open_angle => {
                 break;
             },
             // TODO: .colon => parse attributes
@@ -187,7 +187,7 @@ fn parseAttributes(self: *Parser) !std.ArrayList(Span) {
         attr: while (true) {
             const token = self.tokens[self.tok_i];
             switch (token.tag) {
-                .open_paren => {
+                .open_angle => {
                     break :attr;
                 },
                 .colon => {
@@ -195,7 +195,7 @@ fn parseAttributes(self: *Parser) !std.ArrayList(Span) {
                     break :attr;
                 },
                 .newline,
-                .eof => return self.err(.unterminated_modifier, token),
+                .eof => return self.err(.unexpected_token, token),
                 else => {
                     _ = self.nextToken();
                     if (span) |*some_span| {
@@ -211,7 +211,7 @@ fn parseAttributes(self: *Parser) !std.ArrayList(Span) {
             try attrs.append(some_span);
         }
 
-        if (self.tokens[self.tok_i].tag == .open_paren) {
+        if (self.tokens[self.tok_i].tag == .open_angle) {
             break;
         }
     }
@@ -256,7 +256,7 @@ fn parseBlockCode(self: *Parser) !Element {
     errdefer code.deinit();
 
     while (true) {
-        const span = try self.eatUntilTokens(&.{ .newline, .close_paren });
+        const span = try self.eatUntilTokens(&.{ .newline, .close_angle });
         if (span) |some_span| {
             _ = try code.addChild(Element{
                 .code_literal = some_span
@@ -268,7 +268,7 @@ fn parseBlockCode(self: *Parser) !Element {
                 const line_break = try self.expectLineBreak();
                 _ = try code.addChild(line_break);
             },
-            .close_paren => {
+            .close_angle => {
                 _ = self.nextToken();
                 break;
             },
@@ -300,31 +300,22 @@ fn parseParagraph(self: *Parser) !Element {
 }
 
 fn expectInlineCode(self: *Parser) !Element {
-    const open_backtick_token = self.tokens[self.tok_i];
-    _ = self.nextToken();
-
-    var span = Span{
-        .start = self.tokens[self.tok_i].loc.start_index,
-        .end = self.tokens[self.tok_i].loc.end_index,
-    };
+    const open_token = self.eatToken();
+    var span = Span.from(self.tokens[self.tok_i]);
 
     while (true) {
         const token = self.tokens[self.tok_i];
         switch (token.tag) {
             .newline,
-            .eof => return self.err(.unterminated_inline_code, open_backtick_token),
+            .eof => return self.err(.unterminated_inline_code, open_token),
             else => {
-                if (token.tag == .backtick) {
-                    if (token.len() == open_backtick_token.len()) {
-                        _ = self.nextToken();
-                        break;
-                    } else {
-                        return self.err(.unexpected_token, token);
-                    }
+                if (token.tag == open_token.tag and token.len() == open_token.len()) {
+                    self.nextToken();
+                    break;
                 }
 
                 span.end = token.loc.end_index;
-                _ = self.nextToken();
+                self.nextToken();
             },
         }
     }
