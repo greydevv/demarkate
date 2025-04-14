@@ -84,7 +84,7 @@ fn printAst(allocator: Allocator, el: *const Element, depth: u32, tokenizer: *co
                 indent,
                 @tagName(el.*)
             });
-            std.debug.print("  {s}  {s}\n", .{
+            std.debug.print("  {s}  '{s}'\n", .{
                 indent,
                 span.slice(tokenizer.buffer)
             });
