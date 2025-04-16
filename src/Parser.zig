@@ -105,14 +105,11 @@ pub fn deinit(self: *Parser) void {
 }
 
 pub fn parse(self: *Parser) !void {
-    while (true) {
-        const token = self.tokens[self.tok_i];
-
-        const el = switch (token.tag) {
+    while (self.tokens[self.tok_i].tag != .eof) {
+        const el = switch (self.tokens[self.tok_i].tag) {
             .pound => try self.parseHeading(),
-            .newline => try self.expectLineBreak(),
+            .newline => try self.parseLineBreak(),
             .ampersat => try self.parseBuiltIn(),
-            .eof => return,
             else => try self.parseParagraph(),
         };
 
@@ -121,7 +118,7 @@ pub fn parse(self: *Parser) !void {
 }
 
 fn parseBuiltIn(self: *Parser) !Element {
-    _ = self.nextToken();
+    self.nextToken();
 
     var span = Span.from(self.tokens[self.tok_i]);
     while (true) {
@@ -169,7 +166,7 @@ fn parseAttributes(self: *Parser) !std.ArrayList(Span) {
     var attrs = std.ArrayList(Span).init(self.allocator);
     errdefer attrs.deinit();
 
-    while (true) {
+    while (self.tokens[self.tok_i].tag != .open_angle) {
         var span: ?Span = null;
         attr: while (true) {
             const token = self.tokens[self.tok_i];
@@ -178,17 +175,18 @@ fn parseAttributes(self: *Parser) !std.ArrayList(Span) {
                     break :attr;
                 },
                 .colon => {
-                    _ = self.nextToken();
+                    self.nextToken();
                     break :attr;
                 },
                 .newline,
                 .eof => return self.err(.unexpected_token, token),
                 else => {
-                    _ = self.nextToken();
+                    self.nextToken();
+
                     if (span) |*some_span| {
                         some_span.end = token.loc.end_index;
                     } else {
-                        span = Span.from(token);
+                        span = .from(token);
                     }
                 }
             }
@@ -196,10 +194,6 @@ fn parseAttributes(self: *Parser) !std.ArrayList(Span) {
 
         if (span) |some_span| {
             try attrs.append(some_span);
-        }
-
-        if (self.tokens[self.tok_i].tag == .open_angle) {
-            break;
         }
     }
 
@@ -225,7 +219,7 @@ fn eatUntilTokens(self: *Parser, comptime tags: []const Token.Tag) !?Span {
         if (span) |*some_span| {
             some_span.end = token.loc.end_index;
         } else {
-            span = Span.from(token);
+            span = .from(token);
         }
 
         self.nextToken();
@@ -252,7 +246,7 @@ fn parseBlockCode(self: *Parser) !Element {
 
         switch (self.tokens[self.tok_i].tag) {
             .newline => {
-                const line_break = try self.expectLineBreak();
+                const line_break = try self.parseLineBreak();
                 _ = try code.addChild(line_break);
             },
             .close_angle => {
@@ -267,21 +261,21 @@ fn parseBlockCode(self: *Parser) !Element {
 }
 
 fn parseHeading(self: *Parser) !Element {
-    const level = self.tokens[self.tok_i].len();
-    _ = self.nextToken();
-
+    const level = self.eatToken().len();
+    const children = try self.expectInlineUntilLineBreakOrEof();
     return Element{
         .heading = .{
             .level = level,
-            .children = try self.expectInlineUntilLineBreakOrEof()
+            .children = children
         }
     };
 }
 
 fn parseParagraph(self: *Parser) !Element {
+    const children = try self.expectInlineUntilLineBreakOrEof();
     return Element{
         .paragraph = .{
-            .children = try self.expectInlineUntilLineBreakOrEof()
+            .children = children
         }
     };
 }
@@ -312,7 +306,7 @@ fn expectInlineCode(self: *Parser) !Element {
     };
 }
 
-fn expectLineBreak(self: *Parser) !Element {
+fn parseLineBreak(self: *Parser) !Element {
     const token = self.tokens[self.tok_i];
     if (token.tag != .newline) {
         return self.err(.unexpected_token, token);
@@ -358,29 +352,13 @@ fn parseInline(self: *Parser) !Element {
 /// Parses leaf inline elements that are guaranteed to not recurse.
 fn parseTerminalInline(self: *Parser) !Element {
     const token = self.tokens[self.tok_i];
-    switch (token.tag) {
-        .backtick => {
-            if (token.len() == 1) {
-                return self.expectInlineCode();
-            } else {
-                return self.err(.unexpected_token, token);
-            }
+    return switch (token.tag) {
+        .eof => self.err(.unexpected_token, token),
+        .backtick => self.expectInlineCode(),
+        else => Element{
+            .text = .from(self.eatToken())
         },
-        .colon,
-        .pound,
-        .literal_text => {
-            _ = self.nextToken();
-            return Element{
-                .text = .{
-                    .start = token.loc.start_index,
-                    .end = token.loc.end_index,
-                }
-            };
-        },
-        else => {
-            return self.err(.unexpected_token, token);
-        },
-    }
+    };
 }
 
 fn parseInlineModifier(self: *Parser) !Element {
