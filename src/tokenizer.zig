@@ -6,7 +6,7 @@ pub const Token = struct {
     tag: Tag,
     loc: Loc,
 
-    pub const Tag = enum {
+    pub const Tag = union(enum) {
         pound,
         literal_text,
         newline,

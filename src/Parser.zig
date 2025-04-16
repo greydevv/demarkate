@@ -205,7 +205,7 @@ fn eatUntilTokens(self: *Parser, comptime tags: []const Token.Tag) !?Span {
     blk: while (true) {
         const token = self.tokens[self.tok_i];
         inline for (tags) |stop_tag| {
-            if (token.tag == stop_tag) {
+            if (token.tag.equals(stop_tag)) {
                 break :blk;
             }
         }
@@ -290,7 +290,7 @@ fn expectInlineCode(self: *Parser) !Element {
             .newline,
             .eof => return self.err(.unterminated_inline_code, open_token),
             else => {
-                if (token.tag == open_token.tag and token.len() == open_token.len()) {
+                if (token.tag.equals(open_token.tag) and token.len() == open_token.len()) {
                     self.nextToken();
                     break;
                 }
