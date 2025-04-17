@@ -76,16 +76,14 @@ pub const Error = struct {
 };
 
 allocator: Allocator,
-source: [:0]const u8,
 tokens: []const Token,
 tok_i: usize,
 elements: std.ArrayList(Element),
 errors: std.ArrayList(Error),
 
-pub fn init(allocator: Allocator, source: [:0]const u8, tokens: []const Token) Parser {
+pub fn init(allocator: Allocator, tokens: []const Token) Parser {
     return .{
         .allocator = allocator,
-        .source = source,
         .tokens = tokens,
         .tok_i = 0,
         // TODO: use assume capacity strategy that zig uses, ((tokens.len + 2) / 2),
@@ -109,57 +107,37 @@ pub fn parse(self: *Parser) !void {
         const el = switch (self.tokens[self.tok_i].tag) {
             .pound => try self.parseHeading(),
             .newline => try self.parseLineBreak(),
+            .keyword => try self.parseBuiltIn(),
             .ampersat => try self.parseBuiltIn(),
             else => try self.parseParagraph(),
         };
+        errdefer el.deinit();
 
         try self.elements.append(el);
     }
 }
 
 fn parseBuiltIn(self: *Parser) !Element {
-    self.nextToken();
+    const keyword_tag = self.eatToken().tag.keyword;
 
-    var span = Span.from(self.tokens[self.tok_i]);
-    while (true) {
-        const token = self.tokens[self.tok_i];
-        switch (token.tag) {
-            .colon,
-            .open_angle => {
-                break;
-            },
-            // TODO: .colon => parse attributes
-            .newline,
-            .eof => return self.err(.unexpected_token, token),
-            else => {
-                span.end = token.loc.end_index;
-                _ = self.nextToken();
-            }
-        }
-    }
-
-
+    var attrs: ?std.ArrayList(Span) = null;
+    errdefer if (attrs) |some_attrs| some_attrs.deinit();
     if (self.tokens[self.tok_i].tag == .colon) {
-        const attrs = try self.parseAttributes();
-        defer attrs.deinit();
-
-        std.log.info("Parsed attributes!", .{});
-        for (attrs.items) |attr_span| {
-            std.log.info("  {s}", .{ attr_span.slice(self.source) });
-        }
+        attrs = try self.parseAttributes();
     }
 
-    _ = self.nextToken();
-    // TODO: Throw error for empty modifier
-
-    // DON'T TAKE SLICE. INSTEAD ENCODE DIRECTIVE KEYWORDS INTO TOKENIZER AS
-    // THEIR OWN TOKEN. IS THIS THE RIGHT THING TO DO?
-    std.log.info("Parsing {s}", .{ span.slice(self.source) });
-    if (std.mem.eql(u8, span.slice(self.source), "code")) {
-        return self.parseBlockCode();
+    if (self.tokens[self.tok_i].tag == .open_angle) {
+        self.nextToken();
+    } else {
+        return self.err(.unexpected_token, self.tokens[self.tok_i]);
     }
 
-    unreachable;
+    // TOOD: may not need union? can just assert here, e.g.
+    // switch (token.tag) { .keyword_code, .keyword_etc }.
+    // Seemingly no need for indirection.
+    return switch (keyword_tag) {
+        .code => try self.parseBlockCode(attrs)
+    };
 }
 
 fn parseAttributes(self: *Parser) !std.ArrayList(Span) {
@@ -200,37 +178,10 @@ fn parseAttributes(self: *Parser) !std.ArrayList(Span) {
     return attrs;
 }
 
-fn eatUntilTokens(self: *Parser, comptime tags: []const Token.Tag) !?Span {
-    var span: ?Span = null;
-    blk: while (true) {
-        const token = self.tokens[self.tok_i];
-        inline for (tags) |stop_tag| {
-            if (token.tag.equals(stop_tag)) {
-                break :blk;
-            }
-        }
-
-        std.debug.print("{s}\n", .{ @tagName(token.tag) });
-
-        if (token.tag == .eof) {
-            return self.err(.unexpected_token, token);
-        }
-
-        if (span) |*some_span| {
-            some_span.end = token.loc.end_index;
-        } else {
-            span = .from(token);
-        }
-
-        self.nextToken();
-    }
-
-    return span;
-}
-
-fn parseBlockCode(self: *Parser) !Element {
+fn parseBlockCode(self: *Parser, attrs: ?std.ArrayList(Span)) !Element {
     var code = Element{
         .block_code = .{
+            .attrs = attrs,
             .children = .init(self.allocator)
         }
     };
@@ -258,6 +209,32 @@ fn parseBlockCode(self: *Parser) !Element {
     }
 
     return code;
+}
+
+fn eatUntilTokens(self: *Parser, comptime tags: []const Token.Tag) !?Span {
+    var span: ?Span = null;
+    blk: while (true) {
+        const token = self.tokens[self.tok_i];
+        inline for (tags) |stop_tag| {
+            if (token.tag.equals(stop_tag)) {
+                break :blk;
+            }
+        }
+
+        if (token.tag == .eof) {
+            return self.err(.unexpected_token, token);
+        }
+
+        if (span) |*some_span| {
+            some_span.end = token.loc.end_index;
+        } else {
+            span = .from(token);
+        }
+
+        self.nextToken();
+    }
+
+    return span;
 }
 
 fn parseHeading(self: *Parser) !Element {
@@ -368,6 +345,7 @@ fn parseInlineModifier(self: *Parser) !Element {
             .tag = modifierTag(self.eatToken())
         }
     };
+    errdefer outer_most_modifier.deinit();
 
     var el_stack = std.ArrayList(*Element).init(self.allocator);
     defer el_stack.deinit();
@@ -453,19 +431,6 @@ fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemo
     return error.ParseError;
 }
 
-test "fails on unterminated block code" {
-    const source = source_builder
-        .tok(.backtick, "```")
-        .eof();
-    defer source_builder.free(source);
-
-    try expectError(
-        source,
-        .unterminated_block_code,
-        source[0],
-    );
-}
-
 test "fails on unterminated inline code" {
     const source = source_builder
         .tok(.backtick, "`")
@@ -487,8 +452,8 @@ test "fails on unterminated modifier at eof" {
 
     try expectError(
         source,
-        .unterminated_modifier,
-        source[0]
+        .unexpected_token,
+        source[1]
     );
 }
 
@@ -502,8 +467,8 @@ test "fails on unterminated nested modifier" {
 
     try expectError(
         source,
-        .unterminated_modifier,
-        source[2],
+        .unexpected_token,
+        source[3],
     );
 }
 
@@ -616,6 +581,14 @@ test "parses pound as literal text" {
 
     try std.testing.expectEqual(0, parser.errors.items.len);
     try ast_builder.expectEqual(expected_ast, parser.elements);
+}
+
+test "parses block code" {
+    const source = source_builder
+        .tok(.{ .keyword = .code }, "@code")
+        .eof();
+    defer source_builder.free(source);
+
 }
 
 const source_builder = @import("testing/source_builder.zig");

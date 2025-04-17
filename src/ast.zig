@@ -35,6 +35,7 @@ pub const Element = union(enum) {
         url: Span,
     },
     block_code: struct {
+        attrs: ?std.ArrayList(Span),
         children: std.ArrayList(Element),
     },
     modifier: Modifier,
@@ -58,22 +59,26 @@ pub const Element = union(enum) {
     pub fn deinit(self: *const Element) void {
         switch (self.*) {
             .heading => |*el| {
-                deinitArrayListAndItems(el);
+                deinitChildren(el);
             },
             .paragraph => |*el| {
-                deinitArrayListAndItems(el);
+                deinitChildren(el);
             },
             .img => |*el| {
-                deinitArrayListAndItems(el);
+                deinitChildren(el);
             },
             .url => |*el| {
-                deinitArrayListAndItems(el);
+                deinitChildren(el);
             },
             .modifier => |*el| {
-                deinitArrayListAndItems(el);
+                deinitChildren(el);
             },
             .block_code => |*el| {
-                deinitArrayListAndItems(el);
+                deinitChildren(el);
+
+                if (el.attrs) |attrs| {
+                    attrs.deinit();
+                }
             },
             else => {}
         }
@@ -121,7 +126,7 @@ pub const Element = union(enum) {
     }
 };
 
-fn deinitArrayListAndItems(of: anytype) void {
+fn deinitChildren(of: anytype) void {
     for (of.children.items) |child| child.deinit();
     of.children.deinit();
 }

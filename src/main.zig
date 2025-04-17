@@ -28,7 +28,7 @@ pub fn main() !void {
         if (token.tag == .eof) break;
     }
 
-    var parser = Parser.init(allocator, buffer[0..:0], tokens.items);
+    var parser = Parser.init(allocator, tokens.items);
     defer parser.deinit();
 
     parser.parse() catch {
@@ -47,12 +47,12 @@ pub fn main() !void {
         try printAst(allocator, &el, 0, &tokenizer);
     }
 
-    // var renderer = HtmlRenderer.init(allocator, buffer[0..:0]);
-    // defer renderer.deinit();
-    //
-    // try renderer.render(parser.elements.items);
-    //
-    // std.debug.print("{s}\n", .{ renderer.buffer.items });
+    var renderer = HtmlRenderer.init(allocator, buffer[0..:0]);
+    defer renderer.deinit();
+
+    try renderer.render(parser.elements.items);
+
+    std.debug.print("{s}\n", .{ renderer.buffer.items });
 }
 
 fn readFileAlloc(allocator: Allocator, file_path: []const u8) ![:0]u8 {
@@ -117,7 +117,23 @@ fn printAst(allocator: Allocator, el: *const Element, depth: u32, tokenizer: *co
             }
         },
         .block_code => |node| {
-            std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
+            std.debug.print("{s}- {s}(", .{ indent, @tagName(el.*) });
+
+            if (node.attrs) |attrs| {
+                var i: usize = 0;
+                for (attrs.items) |span| {
+                    std.debug.print("{s}", .{ span.slice(tokenizer.buffer) });
+
+                    if (i < attrs.items.len - 1) {
+                        std.debug.print(", ", .{});
+                    }
+
+                    i += 1;
+                }
+            }
+
+            std.debug.print(")\n", .{});
+
             for (node.children.items) |child| {
                 try printAst(allocator, &child, depth + 1, tokenizer);
             }

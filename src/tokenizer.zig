@@ -20,12 +20,19 @@ pub const Token = struct {
         ampersat,
         open_angle,
         close_angle,
+        keyword: enum {
+            code,
+        },
         // open_bracket,
         // close_bracket,
         // open_paren,
         // close_paren,
         unknown,
-        eof
+        eof,
+
+        pub fn equals(self: *const Tag, other: Tag) bool {
+            return std.meta.eql(self.*, other);
+        }
     };
 
     pub const Loc = struct {
@@ -120,8 +127,17 @@ fn nextStructural(self: *Tokenizer) ?Token {
             self.index += 1;
         },
         '@' => {
-            token.tag = .ampersat;
             self.index += 1;
+            while (std.ascii.isAlphabetic(self.buffer[self.index])) {
+                self.index += 1;
+            }
+
+            const source = self.buffer[(token.loc.start_index + 1)..self.index];
+            if (std.mem.eql(u8, "code", source)) {
+                token.tag = .{ .keyword =  .code };
+            } else {
+                token.tag = .literal_text;
+            }
         },
         '<' => {
             token.tag = .open_angle;
@@ -245,11 +261,11 @@ test "escape character at eof" {
 }
 
 test "text between structural tokens" {
-    const buffer: [:0]const u8 = "[hello, world]";
+    const buffer: [:0]const u8 = "<hello, world>";
     const expected_tokens = source_builder
-        .tok(.open_bracket, "[")
+        .tok(.open_angle, "<")
         .tok(.literal_text, "hello, world")
-        .tok(.close_bracket, "]")
+        .tok(.close_angle, ">")
         .eof();
     defer source_builder.free(expected_tokens);
 
