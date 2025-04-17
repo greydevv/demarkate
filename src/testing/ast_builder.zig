@@ -129,6 +129,9 @@ pub fn expectEqual(expected_ast: std.ArrayList(Element), actual_ast: std.ArrayLi
             .inline_code => |inline_code| {
                 try std.testing.expectEqual(inline_code, actual.inline_code);
             },
+            .code_literal => |code_literal| {
+                try std.testing.expectEqual(code_literal, actual.code_literal);
+            },
             .text => |text| {
                 try std.testing.expectEqual(text, actual.text);
             },
