@@ -23,10 +23,6 @@ pub const Token = struct {
         keyword: enum {
             code,
         },
-        // open_bracket,
-        // close_bracket,
-        // open_paren,
-        // close_paren,
         unknown,
         eof,
 
@@ -147,22 +143,6 @@ fn nextStructural(self: *Tokenizer) ?Token {
             token.tag = .close_angle;
             self.index += 1;
         },
-        // '[' => {
-        //     token.tag = .open_bracket;
-        //     self.index += 1;
-        // },
-        // ']' => {
-        //     token.tag = .close_bracket;
-        //     self.index += 1;
-        // },
-        // '(' => {
-        //     token.tag = .open_paren;
-        //     self.index += 1;
-        // },
-        // ')' => {
-        //     token.tag = .close_paren;
-        //     self.index += 1;
-        // },
         else => return null
     }
 
