@@ -3,7 +3,6 @@ const ast = @import("../ast.zig");
 const Token = @import("../Tokenizer.zig").Token;
 
 const Allocator = std.mem.Allocator;
-
 pub const Error = error{OutOfMemory};
 
 pub const Renderer = struct {
@@ -152,7 +151,6 @@ pub const Renderer = struct {
 
         try self.buffer.appendSlice(tag_open);
     }
-
 
     fn closeTag(self: *Renderer, comptime tag: []const u8) !void {
         const tag_close = comptime std.fmt.comptimePrint("</{s}>", .{ tag });
