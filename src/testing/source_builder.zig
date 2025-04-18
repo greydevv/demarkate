@@ -7,31 +7,35 @@ const allocator = std.testing.allocator;
 pub fn tok(tag: Token.Tag, source: []const u8) *SourceBuilder {
     const builder = allocator.create(SourceBuilder) catch unreachable;
     builder.* = .{
-        .tokens = std.ArrayList(Token).init(allocator)
+        .source = .init(allocator),
+        .tokens = .init(allocator)
     };
 
     return builder.tok(tag, source);
 }
 
-pub fn eof() []Token {
-    const source = allocator.alloc(Token, 1) catch unreachable;
-
-    source[0] = .{
-        .tag = .eof,
-        .loc = .{
-            .start_index = 0,
-            .end_index = 0,
-        },
+pub fn eof() Source {
+    const builder = allocator.create(SourceBuilder) catch unreachable;
+    builder.* = .{
+        .source = .init(allocator),
+        .tokens = .init(allocator)
     };
 
-    return source;
+    return builder.eof();
 }
 
-pub fn free(source: []Token) void {
-    allocator.free(source);
-}
+pub const Source = struct {
+    buffer: [:0]const u8,
+    tokens: []const Token,
+
+    pub fn deinit(self: *const Source) void {
+        allocator.free(self.buffer);
+        allocator.free(self.tokens);
+    }
+};
 
 pub const SourceBuilder = struct {
+    source: std.ArrayList(u8),
     tokens: std.ArrayList(Token),
 
     pub fn deinit(self: *SourceBuilder) void {
@@ -53,13 +57,20 @@ pub const SourceBuilder = struct {
             }
         }) catch unreachable;
 
+        self.source.appendSlice(source) catch unreachable;
+
         return self;
     }
 
-    pub fn eof(self: *SourceBuilder) []Token {
+    pub fn eof(self: *SourceBuilder) Source {
         _ = self.tok(.eof, "");
-        const source = self.tokens.toOwnedSlice() catch unreachable;
+        const tokens = self.tokens.toOwnedSlice() catch unreachable;
+        const source = self.source.toOwnedSliceSentinel(0) catch unreachable;
         self.deinit();
-        return source;
+
+        return .{
+            .buffer = source,
+            .tokens = tokens,
+        };
     }
 };
