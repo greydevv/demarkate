@@ -9,9 +9,9 @@ const Allocator = std.mem.Allocator;
 
 const Parser = @This();
 
-const ParseError = error{};
+const Error = Allocator.Error || error{ ParseError };
 
-pub const Error = struct {
+pub const ParseError = struct {
     tag: Tag,
     token: Token,
 
@@ -24,7 +24,7 @@ pub const Error = struct {
         unterminated_inline_code,
     };
 
-    pub fn allocMsg(self: *const Error, allocator: Allocator) ![]const u8 {
+    pub fn allocMsg(self: *const ParseError, allocator: Allocator) ![]const u8 {
         const tag = self.tag;
         const token = self.token;
 
@@ -79,7 +79,7 @@ allocator: Allocator,
 tokens: []const Token,
 tok_i: usize,
 elements: std.ArrayList(Element),
-errors: std.ArrayList(Error),
+errors: std.ArrayList(ParseError),
 
 pub fn init(allocator: Allocator, tokens: []const Token) Parser {
     return .{
@@ -117,7 +117,7 @@ pub fn parse(self: *Parser) !void {
     }
 }
 
-fn parseBuiltIn(self: *Parser) !Element {
+fn parseBuiltIn(self: *Parser) Error!Element {
     const keyword_tag = self.eatToken().tag.keyword;
 
     var attrs: ?std.ArrayList(Span) = null;
@@ -136,7 +136,9 @@ fn parseBuiltIn(self: *Parser) !Element {
     // switch (token.tag) { .keyword_code, .keyword_etc }.
     // Seemingly no need for indirection.
     return switch (keyword_tag) {
-        .code => try self.parseBlockCode(attrs)
+        .code => try self.parseBlockCode(attrs),
+        .img => try self.parseImg(attrs),
+        .url => try self.parseUrl(attrs),
     };
 }
 
@@ -178,7 +180,58 @@ fn parseAttributes(self: *Parser) !std.ArrayList(Span) {
     return attrs;
 }
 
-fn parseBlockCode(self: *Parser, attrs: ?std.ArrayList(Span)) !Element {
+fn parseInlineBuiltIn(self: *Parser) Error!Element {
+    const tag = self.eatToken().tag.keyword;
+
+    switch (tag) {
+        else => unreachable,
+    }
+}
+
+fn parseImg(self: *Parser, _: ?std.ArrayList(Span)) Error!Element {
+    const url = (try self.parseUrl(null)).url;
+    const img = Element{
+        .img = .{
+            .children = url.children,
+            .src = url.href,
+        }
+    };
+
+    return img;
+}
+
+fn parseUrl(self: *Parser, _: ?std.ArrayList(Span)) Error!Element {
+    var url = Element{
+        .url = .{
+            .children = .init(self.allocator),
+            .href = undefined,
+        }
+    };
+    errdefer url.deinit();
+
+    while (self.tokens[self.tok_i].tag != .semicolon) {
+        const child = try self.parseInline();
+        _ = try url.addChild(child);
+    }
+
+    self.nextToken();
+
+
+
+    if (try self.eatUntilTokens(&.{ .close_angle })) |href| {
+        // TODO: lol
+        url.url.href = href;
+    } else {
+        return self.err(.unexpected_token, self.tokens[self.tok_i]);
+    }
+
+
+    self.nextToken();
+
+    return url;
+}
+
+fn parseBlockCode(self: *Parser, attrs: ?std.ArrayList(Span)) Error!Element {
     var code = Element{
         .block_code = .{
             .attrs = attrs,
@@ -201,7 +254,7 @@ fn parseBlockCode(self: *Parser, attrs: ?std.ArrayList(Span)) !Element {
                 _ = try code.addChild(line_break);
             },
             .close_angle => {
-                _ = self.nextToken();
+                self.nextToken();
                 break;
             },
             else => unreachable,
@@ -237,7 +290,7 @@ fn eatUntilTokens(self: *Parser, comptime tags: []const Token.Tag) !?Span {
     return span;
 }
 
-fn parseHeading(self: *Parser) !Element {
+fn parseHeading(self: *Parser) Error!Element {
     const level = self.eatToken().len();
     const children = try self.expectInlineUntilLineBreakOrEof();
     return Element{
@@ -248,7 +301,7 @@ fn parseHeading(self: *Parser) !Element {
     };
 }
 
-fn parseParagraph(self: *Parser) !Element {
+fn parseParagraph(self: *Parser) Error!Element {
     const children = try self.expectInlineUntilLineBreakOrEof();
     return Element{
         .paragraph = .{
@@ -257,7 +310,7 @@ fn parseParagraph(self: *Parser) !Element {
     };
 }
 
-fn expectInlineCode(self: *Parser) !Element {
+fn expectInlineCode(self: *Parser) Error!Element {
     const open_token = self.eatToken();
     var span = Span.from(self.tokens[self.tok_i]);
 
@@ -283,7 +336,7 @@ fn expectInlineCode(self: *Parser) !Element {
     };
 }
 
-fn parseLineBreak(self: *Parser) !Element {
+fn parseLineBreak(self: *Parser) Error!Element {
     const token = self.tokens[self.tok_i];
     if (token.tag != .newline) {
         return self.err(.unexpected_token, token);
@@ -315,30 +368,23 @@ fn expectInlineUntilLineBreakOrEof(self: *Parser) !std.ArrayList(Element) {
     return children;
 }
 
-
-/// Parses inline elements.
-fn parseInline(self: *Parser) !Element {
+fn parseInline(self: *Parser) Error!Element {
     const token = self.tokens[self.tok_i];
     if (modifierTagOrNull(token)) |_| {
         return self.parseInlineModifier();
-    } else {
-        return self.parseTerminalInline();
     }
-}
 
-/// Parses leaf inline elements that are guaranteed to not recurse.
-fn parseTerminalInline(self: *Parser) !Element {
-    const token = self.tokens[self.tok_i];
     return switch (token.tag) {
         .eof => self.err(.unexpected_token, token),
         .backtick => self.expectInlineCode(),
+        .keyword => self.parseBuiltIn(),
         else => Element{
             .text = .from(self.eatToken())
         },
     };
 }
 
-fn parseInlineModifier(self: *Parser) !Element {
+fn parseInlineModifier(self: *Parser) Error!Element {
     var outer_most_modifier = Element{
         .modifier = .{
             .children = .init(self.allocator),
@@ -376,7 +422,7 @@ fn parseInlineModifier(self: *Parser) !Element {
 
             self.nextToken();
         } else {
-            const child_el = try self.parseTerminalInline();
+            const child_el = try self.parseInline();
             _ = try el_stack.getLast().addChild(child_el);
         }
 
@@ -421,7 +467,7 @@ fn eatToken(self: *Parser) Token {
     return self.tokens[self.tok_i - 1];
 }
 
-fn err(self: *Parser, tag: Error.Tag, token: Token) error{ ParseError, OutOfMemory } {
+fn err(self: *Parser, tag: ParseError.Tag, token: Token) error{ ParseError, OutOfMemory } {
 
     try self.errors.append(.{
         .tag = tag,
@@ -437,10 +483,12 @@ test "fails on unterminated inline code" {
         .eof();
     defer source_builder.free(source);
 
+    const tokens = source.tokens;
+
     try expectError(
         source,
         .unterminated_inline_code,
-        source[0],
+        tokens[0],
     );
 }
 
@@ -450,10 +498,12 @@ test "fails on unterminated modifier at eof" {
         .eof();
     defer source_builder.free(source);
 
+    const tokens = source.tokens;
+
     try expectError(
         source,
         .unexpected_token,
-        source[1]
+        tokens[1]
     );
 }
 
@@ -465,10 +515,12 @@ test "fails on unterminated nested modifier" {
         .eof();
     defer source_builder.free(source);
 
+    const tokens = source.tokens;
+    
     try expectError(
         source,
         .unexpected_token,
-        source[3],
+        tokens[3],
     );
 }
 
@@ -482,14 +534,16 @@ test "parses modifier" {
         .eof();
     defer source_builder.free(source);
 
+    const tokens = source.tokens;
+
     const expected_ast = AstBuilder.init()
         .paragraph(AstBuilder.init()
-            .text(source[0])
+            .text(tokens[0])
             .modifier(.bold, AstBuilder.init()
-                .text(source[2])
+                .text(tokens[2])
                 .build()
             )
-            .text(source[4])
+            .text(tokens[4])
             .build()
         )
         .build();
@@ -521,13 +575,15 @@ test "parses nested modifiers" {
         .eof();
     defer source_builder.free(source);
 
+    const tokens = source.tokens;
+
     const expected_ast = AstBuilder.init()
         .paragraph(AstBuilder.init()
             .modifier(.bold, AstBuilder.init()
                 .modifier(.italic, AstBuilder.init()
                     .modifier(.underline, AstBuilder.init()
                         .modifier(.strikethrough, AstBuilder.init()
-                            .text(source[4])
+                            .text(tokens[4])
                             .build()
                         )
                         .build()
@@ -561,11 +617,13 @@ test "parses pound as literal text" {
         .eof();
     defer source_builder.free(source);
 
+    const tokens = source.tokens;
+
     const expected_ast = AstBuilder.init()
         .paragraph(AstBuilder.init()
-            .text(source[0])
-            .text(source[1])
-            .text(source[2])
+            .text(tokens[0])
+            .text(tokens[1])
+            .text(tokens[2])
             .build()
         )
         .build();
@@ -595,7 +653,7 @@ const source_builder = @import("testing/source_builder.zig");
 const ast_builder = @import("testing/ast_builder.zig");
 const AstBuilder = ast_builder.AstBuilder;
 
-fn expectError(source: []const Token, expected_err: Error.Tag, expected_token: Token) !void {
+fn expectError(source: []const Token, expected_err: ParseError.Tag, expected_token: Token) !void {
     var parser = Parser.init(
         std.testing.allocator,
         source

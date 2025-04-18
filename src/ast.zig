@@ -28,11 +28,11 @@ pub const Element = union(enum) {
     },
     url: struct {
         children: std.ArrayList(Element),
-        url: Span,
+        href: Span,
     },
     img: struct {
         children: std.ArrayList(Element),
-        url: Span,
+        src: Span,
     },
     block_code: struct {
         attrs: ?std.ArrayList(Span),

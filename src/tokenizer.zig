@@ -22,6 +22,8 @@ pub const Token = struct {
         close_angle,
         keyword: enum {
             code,
+            url,
+            img
         },
         unknown,
         eof,
@@ -54,9 +56,9 @@ pub fn init(buffer: [:0]const u8) Tokenizer {
 }
 
 pub fn next(self: *Tokenizer) Token {
-    if (self.cached_token) |cached_token| {
+    if (self.cached_token) |token| {
         self.cached_token = null;
-        return cached_token;
+        return token;
     } else if (self.nextStructural()) |next_structural_token| {
         return next_structural_token;
     } else {
@@ -129,8 +131,14 @@ fn nextStructural(self: *Tokenizer) ?Token {
             }
 
             const source = self.buffer[(token.loc.start_index + 1)..self.index];
+
+            // TODO: comptime this?
             if (std.mem.eql(u8, "code", source)) {
                 token.tag = .{ .keyword =  .code };
+            } else if (std.mem.eql(u8, "url", source)) {
+                token.tag = .{ .keyword = .url };
+            } else if (std.mem.eql(u8, "img", source)) {
+                token.tag = .{ .keyword = .img };
             } else {
                 token.tag = .literal_text;
             }
@@ -169,6 +177,7 @@ fn literalText(self: *Tokenizer) Token {
 
         // if escape, process next or return EOF
         if (self.buffer[self.index] == '\\') {
+            // TODO: should 'escaping' EOF be an error?
             if (self.buffer[self.index + 1] == 0) {
                 self.index += 1;
                 token.loc.end_index = self.index;
@@ -185,92 +194,93 @@ fn literalText(self: *Tokenizer) Token {
     return token;
 }
 
-test "empty" {
-    const buffer: [:0]const u8 = "";
-
-    const expected_tokens = source_builder
+test "tokenizes empty source" {
+    const source = source_builder
         .eof();
-    defer source_builder.free(expected_tokens);
+    defer source.deinit();
 
-    try expectTokens(buffer, expected_tokens);
+    try expectTokens(source);
 }
 
-test "whitespace only" {
-    const buffer: [:0]const u8 = " ";
-
-    const expected_tokens = source_builder
-        .tok(.literal_text, " ")
-        .eof();
-    defer source_builder.free(expected_tokens);
-
-    try expectTokens(buffer, expected_tokens);
-}
-
-
-test "inline text only" {
-    const buffer: [:0]const u8 = "hello, world";
-
-    const expected_tokens = source_builder
+test "tokenizes text-only source" {
+    const source = source_builder
         .tok(.literal_text, "hello, world")
         .eof();
-    defer source_builder.free(expected_tokens);
+    defer source.deinit();
 
-    try expectTokens(buffer, expected_tokens);
+    try expectTokens(source);
 }
 
-test "escape character" {
-    const buffer: [:0]const u8 = "hello\\#world";
+test "tokenizes escape character after structural token" {
+    const source = source_builder
+        .tok(.open_angle, "<")
+        .tok(.literal_text, "\\>")
+        .tok(.close_angle, ">")
+        .eof();
+    defer source.deinit();
 
-    const expected_tokens = source_builder
+    try expectTokens(source);
+} 
+
+test "tokenizes escape character in literal text" {
+    const source = source_builder
         .tok(.literal_text, "hello\\#world")
         .eof();
-    defer source_builder.free(expected_tokens);
+    defer source.deinit();
 
-    try expectTokens(buffer, expected_tokens);
+    try expectTokens(source);
 }
 
-test "escape character at eof" {
-    const buffer: [:0]const u8 = "hello\\";
-
-    const expected_tokens = source_builder
+test "tokenizes escape character at eof" {
+    const source = source_builder
         .tok(.literal_text, "hello\\")
         .eof();
-    defer source_builder.free(expected_tokens);
+    defer source.deinit();
 
-    try expectTokens(buffer, expected_tokens);
+    try expectTokens(source);
 }
 
-test "text between structural tokens" {
-    const buffer: [:0]const u8 = "<hello, world>";
-    const expected_tokens = source_builder
+test "tokenizes literal text between structural tokens" {
+    const source = source_builder
         .tok(.open_angle, "<")
         .tok(.literal_text, "hello, world")
         .tok(.close_angle, ">")
         .eof();
-    defer source_builder.free(expected_tokens);
+    defer source.deinit();
 
-    try expectTokens(buffer, expected_tokens);
+    try expectTokens(source);
 }
 
-test "structural token between text" {
-    const buffer: [:0]const u8 = "hello*world";
-
-    const expected_tokens = source_builder
+test "tokenizes structural token between literal text" {
+    const source = source_builder
         .tok(.literal_text, "hello")
         .tok(.asterisk, "*")
         .tok(.literal_text, "world")
         .eof();
-    defer source_builder.free(expected_tokens);
+    defer source.deinit();
 
-    try expectTokens(buffer, expected_tokens);
+    try expectTokens(source);
+}
+
+test "tokenizes keywords" {
+    const source = source_builder
+        .tok(.{ .keyword = .code }, "@code")
+        .tok(.{ .keyword = .url }, "@url")
+        .tok(.{ .keyword = .img }, "@img")
+        .eof();
+    defer source.deinit();
+
+    try expectTokens(source);
 }
 
 const source_builder = @import("testing/source_builder.zig");
 
 fn expectTokens(
-    buffer: [:0]const u8,
-    expected_tokens: []const Token
+    source: source_builder.Source,
 ) !void {
+    const buffer = source.buffer;
+    const expected_tokens = source.tokens;
+
     var tokenizer = Tokenizer.init(buffer);
     for (expected_tokens) |expected| {
         const received = tokenizer.next();

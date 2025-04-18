@@ -4,80 +4,7 @@ const Token = @import("../Tokenizer.zig").Token;
 
 const Allocator = std.mem.Allocator;
 
-pub const Element = union(Element.Type) {
-    node: Node,
-    leaf: Leaf,
-
-    pub const Type = enum {
-        node,
-        leaf
-    };
-
-    pub const Node = struct {
-        tag: Tag,
-        class: []const u8,
-        children: std.ArrayList(Element),
-
-        pub const Tag = enum {
-            div,
-            span,
-        };
-    };
-
-    pub const Leaf = struct {
-        tag: Tag,
-        class: ?[]u8,
-        source: ?[]const u8,
-
-        pub const Tag = enum {
-            literal,
-            code,
-            br,
-        };
-    };
-
-    pub fn deinit(self: *const Element) void {
-        switch (self.*) {
-            .node => |*node| {
-                for (node.children.items) |child| {
-                    child.deinit();
-                }
-
-                node.children.deinit();
-            },
-            .leaf => return
-        }
-    }
-
-    pub fn initNode(allocator: Allocator, tag: Node.Tag, class: []const u8) Element {
-        return .{
-            .node = .{
-                .tag = tag,
-                .class = class,
-                .children = std.ArrayList(Element).init(allocator)
-            }
-        };
-    }
-
-    pub fn initLeaf(tag: Leaf.Tag, class: ?[]u8, source: ?[]const u8) Element {
-        return .{
-            .leaf = .{
-                .tag = tag,
-                .class = class,
-                .source = source
-            }
-        };
-    }
-
-    pub fn addChild(self: *Element, el: Element) !void {
-        switch (self.*) {
-            .node => |*node| try node.children.append(el),
-            .leaf => unreachable,
-        }
-    }
-};
-
-pub const RenderError = error{OutOfMemory};
+pub const Error = error{OutOfMemory};
 
 pub const Renderer = struct {
     allocator: Allocator,
@@ -96,7 +23,7 @@ pub const Renderer = struct {
         self.buffer.deinit();
     }
 
-    pub fn render(self: *Renderer, elements: []const ast.Element) !void {
+    pub fn render(self: *Renderer, elements: []const ast.Element) Error!void {
         try self.openTagWithClass("div", "markdown");
 
         for (elements) |el| {
@@ -106,7 +33,7 @@ pub const Renderer = struct {
         try self.closeTag("div");
     }
 
-    fn renderElement(self: *Renderer, el: ast.Element) RenderError!void {
+    fn renderElement(self: *Renderer, el: ast.Element) Error!void {
         return switch (el) {
             .heading => |h| {
                 // TODO: just h1 for now
@@ -185,19 +112,39 @@ pub const Renderer = struct {
             .code_literal,
             .text => |span| try self.appendSpan(span),
             .line_break => try self.openTag("br"),
-            .url,
-            .img => unreachable,
+            .img => |img| {
+                try self.openTag("img");
+
+                // TODO: add src
+
+                for (img.children.items) |child| {
+                    try self.renderElement(child);
+                }
+
+                try self.closeTag("img");
+            },
+            .url => |url| {
+                try self.openTag("a");
+
+                // TODO: add href
+
+                for (url.children.items) |child| {
+                    try self.renderElement(child);
+                }
+
+                try self.closeTag("a");
+            },
         };
     }
 
-    fn openTag(self: *Renderer, comptime tag: []const u8) !void {
+    fn openTag(self: *Renderer, comptime tag: []const u8) Error!void {
         return self.openTagWithClass(tag, null);
     }
 
-    fn openTagWithClass(self: *Renderer, comptime tag: []const u8, comptime class: ?[]const u8) !void {
+    fn openTagWithClass(self: *Renderer, comptime tag: []const u8, comptime class: ?[]const u8) Error!void {
         const tag_open = comptime blk: {
             if (class) |class_name| {
-                break :blk std.fmt.comptimePrint("<{s} class={s}>", .{ tag, class_name });
+                break :blk std.fmt.comptimePrint("<{s} class=\"{s}\">", .{ tag, class_name });
             } else {
                 break :blk std.fmt.comptimePrint("<{s}>", .{ tag });
             }
