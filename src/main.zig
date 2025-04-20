@@ -1,6 +1,7 @@
 const std = @import("std");
 const Tokenizer = @import("Tokenizer.zig");
 const Parser = @import("Parser.zig");
+const Formatter = @import("Formatter.zig").Formatter;
 const HtmlRenderer = @import("render/html.zig").Renderer;
 
 const File = std.fs.File;
@@ -42,10 +43,12 @@ pub fn main() !void {
         return;
     };
 
-
     for (parser.elements.items) |el| {
         try printAst(allocator, &el, 0, &tokenizer);
     }
+
+    const formatter = Formatter.init(tokenizer.buffer);
+    try formatter.format(parser.elements.items);
 
     var renderer = HtmlRenderer.init(allocator, buffer[0..:0]);
     defer renderer.deinit();
@@ -117,22 +120,11 @@ fn printAst(allocator: Allocator, el: *const Element, depth: u32, tokenizer: *co
             }
         },
         .block_code => |node| {
-            std.debug.print("{s}- {s}(", .{ indent, @tagName(el.*) });
-
-            if (node.attrs) |attrs| {
-                var i: usize = 0;
-                for (attrs.items) |span| {
-                    std.debug.print("{s}", .{ span.slice(tokenizer.buffer) });
-
-                    if (i < attrs.items.len - 1) {
-                        std.debug.print(", ", .{});
-                    }
-
-                    i += 1;
-                }
+            std.debug.print("{s}- {s}", .{ indent, @tagName(el.*) });
+            
+            if (node.lang) |lang| {
+                std.debug.print("({s})", .{ lang.slice(tokenizer.buffer) });
             }
-
-            std.debug.print(")\n", .{});
 
             for (node.children.items) |child| {
                 try printAst(allocator, &child, depth + 1, tokenizer);
