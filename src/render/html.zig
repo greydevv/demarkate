@@ -5,6 +5,8 @@ const Token = @import("../Tokenizer.zig").Token;
 const Allocator = std.mem.Allocator;
 pub const Error = error{OutOfMemory};
 
+const Attr = std.meta.Tuple(&.{ []const u8, []const u8 });
+
 pub const Renderer = struct {
     allocator: Allocator,
     source: [:0]const u8,
@@ -23,7 +25,9 @@ pub const Renderer = struct {
     }
 
     pub fn render(self: *Renderer, elements: []const ast.Element) Error!void {
-        try self.openTagWithClass("div", "markdown");
+        try self.openTagWithAttrs("div", &.{
+            .{ "class", "markdown" }
+        });
 
         for (elements) |el| {
             try self.renderElement(el);
@@ -108,13 +112,10 @@ pub const Renderer = struct {
                 try self.appendSpan(span);
                 try self.closeTag("code");
             },
-            .code_literal,
-            .text => |span| try self.appendSpan(span),
-            .line_break => try self.openTag("br"),
             .img => |img| {
-                try self.openTag("img");
-
-                // TODO: add src
+                try self.openTagWithAttrs("img", &.{
+                    .{ "src",  img.src.slice(self.source) },
+                });
 
                 for (img.children.items) |child| {
                     try self.renderElement(child);
@@ -123,9 +124,9 @@ pub const Renderer = struct {
                 try self.closeTag("img");
             },
             .url => |url| {
-                try self.openTag("a");
-
-                // TODO: add href
+                try self.openTagWithAttrs("a", &.{
+                    .{ "href",  url.href.slice(self.source) },
+                });
 
                 for (url.children.items) |child| {
                     try self.renderElement(child);
@@ -133,23 +134,39 @@ pub const Renderer = struct {
 
                 try self.closeTag("a");
             },
+            .code_literal,
+            .text => |span| try self.appendSpan(span),
+            .line_break => try self.openTag("br"),
         };
     }
 
     fn openTag(self: *Renderer, comptime tag: []const u8) Error!void {
-        return self.openTagWithClass(tag, null);
+        return self.openTagWithAttrs(tag, &.{});
     }
 
-    fn openTagWithClass(self: *Renderer, comptime tag: []const u8, comptime class: ?[]const u8) Error!void {
-        const tag_open = comptime blk: {
-            if (class) |class_name| {
-                break :blk std.fmt.comptimePrint("<{s} class=\"{s}\">", .{ tag, class_name });
-            } else {
-                break :blk std.fmt.comptimePrint("<{s}>", .{ tag });
-            }
-        };
+    fn openTagWithAttrs(
+        self: *Renderer,
+        comptime tag: []const u8,
+        attrs: []const Attr
+    ) Error!void {
+        const tag_prefix = comptime std.fmt.comptimePrint("<{s}", .{ tag });
+        try self.buffer.appendSlice(tag_prefix);
 
-        try self.buffer.appendSlice(tag_open);
+        var i: usize = 0;
+        for (attrs) |attr| {
+            const html_attr = try std.fmt.allocPrint(
+                self.allocator,
+                " {s}=\"{s}\"",
+                .{ attr[0], attr[1] }
+            );
+
+            try self.buffer.appendSlice(html_attr);
+            self.allocator.free(html_attr);
+
+            i += 1;
+        }
+
+        try self.buffer.appendSlice(">");
     }
 
     fn closeTag(self: *Renderer, comptime tag: []const u8) !void {
