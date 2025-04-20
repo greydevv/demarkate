@@ -98,7 +98,14 @@ pub const Renderer = struct {
                 },
             .block_code => |block_code| {
                 try self.openTag("pre");
-                try self.openTag("code");
+
+                if (block_code.lang) |lang| {
+                    try self.openTagWithAttrs("code", &.{
+                        .{ "class", lang.slice(self.source) }
+                    });
+                } else {
+                    try self.openTag("code");
+                }
 
                 for (block_code.children.items) |child| {
                     try self.renderElement(child);

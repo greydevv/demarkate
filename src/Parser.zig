@@ -120,11 +120,8 @@ pub fn parse(self: *Parser) !void {
 fn parseBuiltIn(self: *Parser) Error!Element {
     const keyword_tag = self.eatToken().tag.keyword;
 
-    var attrs: ?std.ArrayList(Span) = null;
-    errdefer if (attrs) |some_attrs| some_attrs.deinit();
-    if (self.tokens[self.tok_i].tag == .colon) {
-        attrs = try self.parseAttributes();
-    }
+    const attrs = try self.parseAttributes();
+    defer attrs.deinit();
 
     if (self.tokens[self.tok_i].tag == .open_angle) {
         self.nextToken();
@@ -231,10 +228,12 @@ fn parseUrl(self: *Parser, _: ?std.ArrayList(Span)) Error!Element {
     return url;
 }
 
-fn parseBlockCode(self: *Parser, attrs: ?std.ArrayList(Span)) Error!Element {
+fn parseBlockCode(self: *Parser, attrs: std.ArrayList(Span)) Error!Element {
+    const lang = if (attrs.items.len > 0) attrs.items[0] else null;
+
     var code = Element{
         .block_code = .{
-            .attrs = attrs,
+            .lang = lang,
             .children = .init(self.allocator)
         }
     };
@@ -416,8 +415,8 @@ fn parseInlineModifier(self: *Parser) Error!Element {
                 };
 
                 const old_top = el_stack.getLast();
-                const new_top = try old_top.addChild(el);
-                try el_stack.append(new_top);
+                _ = try old_top.addChild(el);
+                try el_stack.append(old_top.lastChild());
             }
 
             self.nextToken();

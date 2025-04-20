@@ -35,7 +35,7 @@ pub const Element = union(enum) {
         src: Span,
     },
     block_code: struct {
-        attrs: ?std.ArrayList(Span),
+        lang: ?Span,
         children: std.ArrayList(Element),
     },
     modifier: Modifier,
@@ -75,10 +75,6 @@ pub const Element = union(enum) {
             },
             .block_code => |*el| {
                 deinitChildren(el);
-
-                if (el.attrs) |attrs| {
-                    attrs.deinit();
-                }
             },
             else => {}
         }
@@ -118,11 +114,11 @@ pub const Element = union(enum) {
         };
     }
 
-    pub fn lastChild(self: *const Element) *Element {
-        switch (self.*) {
-            .node => |*n| return &n.children.items[n.children.items.len - 1],
-            .leaf => unreachable,
-        }
+    pub fn lastChild(self: *Element) *Element {
+        // const active_tag = std.meta.activeTag(self.*);
+        // std.debug.print("\n{s}\n\n", .{ @typeName(@TypeOf(active_tag)) });
+
+        return &self.modifier.children.items[self.modifier.children.items.len - 1];
     }
 };
 
