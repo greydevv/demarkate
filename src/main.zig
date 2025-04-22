@@ -35,20 +35,19 @@ pub fn main() !void {
     parser.parse() catch {
         for (parser.errors.items) |e| {
             const msg = try e.allocMsg(allocator);
-            defer allocator.free(msg);
-
             std.log.err("{s}", .{ msg });
+            allocator.free(msg);
         }
 
         return;
     };
 
+    const formatter = Formatter.init(tokenizer.buffer);
+    try formatter.format(parser.elements.items);
+
     for (parser.elements.items) |el| {
         try printAst(allocator, &el, 0, &tokenizer);
     }
-
-    const formatter = Formatter.init(tokenizer.buffer);
-    try formatter.format(parser.elements.items);
 
     var renderer = HtmlRenderer.init(allocator, buffer[0..:0]);
     defer renderer.deinit();
