@@ -309,7 +309,7 @@ fn parseParagraph(self: *Parser) Error!Element {
     };
 }
 
-fn expectInlineCode(self: *Parser) Error!Element {
+fn parseInlineCode(self: *Parser) Error!Element {
     const open_token = self.eatToken();
     var span = Span.from(self.tokens[self.tok_i]);
 
@@ -375,7 +375,7 @@ fn parseInline(self: *Parser) Error!Element {
 
     return switch (token.tag) {
         .eof => self.err(.unexpected_token, token),
-        .backtick => self.expectInlineCode(),
+        .backtick => self.parseInlineCode(),
         .keyword => self.parseBuiltIn(),
         else => Element{
             .text = .from(self.eatToken())
