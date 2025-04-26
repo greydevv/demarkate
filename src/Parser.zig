@@ -134,7 +134,6 @@ fn parseBuiltIn(self: *Parser) Error!Element {
     // Seemingly no need for indirection.
     return switch (keyword_tag) {
         .code => try self.parseBlockCode(attrs),
-        .snip => try self.parseInlineCode(attrs),
         .img => try self.parseImg(attrs),
         .url => try self.parseUrl(attrs),
     };
@@ -227,24 +226,6 @@ fn parseUrl(self: *Parser, _: ?std.ArrayList(Span)) Error!Element {
     self.nextToken();
 
     return url;
-}
-
-fn parseInlineCode(self: *Parser, _: std.ArrayList(Span)) Error!Element {
-    // const lang = if (attrs.items.len > 0) attrs.items[0] else null;
-
-    var code = Element{
-        .inline_code = undefined
-    };
-    errdefer code.deinit();
-
-    const span = try self.eatUntilTokens(&.{ .newline, .close_angle });
-    if (span) |some_span| {
-        return Element{
-            .inline_code = some_span
-        };
-    } else {
-        return self.err(.unexpected_token, self.tokens[self.tok_i]);
-    }
 }
 
 fn parseBlockCode(self: *Parser, attrs: std.ArrayList(Span)) Error!Element {

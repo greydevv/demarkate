@@ -22,7 +22,6 @@ pub const Token = struct {
         close_angle,
         keyword: enum {
             code,
-            snip,
             url,
             img
         },
@@ -135,9 +134,7 @@ fn nextStructural(self: *Tokenizer) ?Token {
 
             // TODO: comptime this?
             if (std.mem.eql(u8, "code", source)) {
-                token.tag = .{ .keyword = .code };
-            } else if (std.mem.eql(u8, "snip", source)) {
-                token.tag = .{ .keyword = .snip };
+                token.tag = .{ .keyword =  .code };
             } else if (std.mem.eql(u8, "url", source)) {
                 token.tag = .{ .keyword = .url };
             } else if (std.mem.eql(u8, "img", source)) {
