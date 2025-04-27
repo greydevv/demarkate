@@ -17,9 +17,7 @@ pub const ParseError = struct {
 
     pub const Tag = enum {
         unexpected_token,
-        invalid_token,
         unterminated_modifier,
-        no_line_break_before_block_code,
         unterminated_block_code,
         unterminated_inline_code,
     };
@@ -38,26 +36,12 @@ pub const ParseError = struct {
                         token.loc.end_index
                     }
                 ),
-            .invalid_token =>
-                std.fmt.allocPrint(
-                    allocator,
-                    "Invalid token ({s}) from {} to {}", .{
-                        @tagName(token.tag),
-                        token.loc.start_index,
-                        token.loc.end_index
-                    }
-                ),
             .unterminated_modifier =>
                 std.fmt.allocPrint(
                     allocator,
                     "Unterminated inline modifier ({s})", .{
                         @tagName(token.tag)
                     }
-                ),
-            .no_line_break_before_block_code =>
-                std.fmt.allocPrint(
-                    allocator,
-                    "No line break before code block", .{}
                 ),
             .unterminated_block_code =>
                 std.fmt.allocPrint(
@@ -397,7 +381,6 @@ fn parseInlineModifier(self: *Parser) Error!Element {
 
     try el_stack.append(&outer_most_modifier);
 
-    var num_iters: u32 = 0;
     while (el_stack.items.len > 0) {
         const token = self.tokens[self.tok_i];
 
@@ -424,14 +407,9 @@ fn parseInlineModifier(self: *Parser) Error!Element {
             const child_el = try self.parseInline();
             _ = try el_stack.getLast().addChild(child_el);
         }
-
-        if (num_iters == 20) {
-            unreachable;
-        } else {
-            num_iters += 1;
-        }
     }
 
+    std.debug.print("returning\n", .{});
     return outer_most_modifier;
 }
 
