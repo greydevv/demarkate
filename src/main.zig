@@ -1,12 +1,7 @@
 const std = @import("std");
-const Tokenizer = @import("Tokenizer.zig");
-const Parser = @import("Parser.zig");
-const Formatter = @import("Formatter.zig").Formatter;
-const HtmlRenderer = @import("render/html.zig").Renderer;
-
+const dmk = @import("demarkate");
 const File = std.fs.File;
 const Allocator = std.mem.Allocator;
-const Token = Tokenizer.Token;
 
 const sample_file_path = "/Users/gr.murray/Developer/zig/markdown-parser/samples/test.md";
 
@@ -20,18 +15,18 @@ pub fn main() !void {
 
     std.log.info("Read {} bytes into buffer", .{ buffer.len });
 
-    var tokenizer = Tokenizer.init(buffer[0..:0]);
-    var tokens = std.ArrayList(Token).init(allocator);
+    var tokenizer = dmk.Tokenizer.init(buffer[0..:0]);
+    var tokens = std.ArrayList(dmk.Tokenizer.Token).init(allocator);
     defer tokens.deinit();
+
     while(true) {
         const token = tokenizer.next();
         try tokens.append(token);
         if (token.tag == .eof) break;
     }
 
-    var parser = Parser.init(allocator, tokens.items);
+    var parser = dmk.Parser.init(allocator, tokens.items);
     defer parser.deinit();
-
     parser.parse() catch {
         for (parser.errors.items) |e| {
             const msg = try e.allocMsg(allocator);
@@ -42,16 +37,15 @@ pub fn main() !void {
         return;
     };
 
-    const formatter = Formatter.init(tokenizer.buffer);
+    const formatter = dmk.Formatter.init(tokenizer.buffer);
     try formatter.format(parser.elements.items);
 
     for (parser.elements.items) |el| {
         try printAst(allocator, &el, 0, &tokenizer);
     }
 
-    var renderer = HtmlRenderer.init(allocator, buffer[0..:0]);
+    var renderer = dmk.HtmlRenderer.init(allocator, buffer[0..:0]);
     defer renderer.deinit();
-
     try renderer.render(parser.elements.items);
 
     std.debug.print("{s}\n", .{ renderer.buffer.items });
@@ -71,9 +65,7 @@ fn readFileAlloc(allocator: Allocator, file_path: []const u8) ![:0]u8 {
     );
 }
 
-const Element = @import("ast.zig").Element;
-
-fn printAst(allocator: Allocator, el: *const Element, depth: u32, tokenizer: *const Tokenizer) !void {
+fn printAst(allocator: Allocator, el: *const dmk.ast.Element, depth: u32, tokenizer: *const dmk.Tokenizer) !void {
     const indent = try allocator.alloc(u8, depth * 2);
     defer allocator.free(indent);
     @memset(indent, ' ');

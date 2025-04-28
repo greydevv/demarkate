@@ -1,33 +1,31 @@
 const std = @import("std");
-const Token = @import("../Tokenizer.zig").Token;
-
-const Element = @import("../ast.zig").Element;
-const Span = @import("../ast.zig").Span;
+const Tokenizer = @import("../Tokenizer.zig");
+const ast = @import("../ast.zig");
 
 const allocator = std.testing.allocator;
 
-pub fn free(ast: std.ArrayList(Element)) void {
-    for (ast.items) |el| {
+pub fn free(elements: std.ArrayList(ast.Element)) void {
+    for (elements.items) |el| {
         el.deinit();
     }
 
-    ast.deinit();
+    elements.deinit();
 }
 
 pub const AstBuilder = struct {
-    elements: std.ArrayList(Element),
+    elements: std.ArrayList(ast.Element),
 
     pub fn init() *AstBuilder {
         const builder = allocator.create(AstBuilder) catch unreachable;
         builder.* = .{
-            .elements = std.ArrayList(Element).init(allocator)
+            .elements = std.ArrayList(ast.Element).init(allocator)
         };
 
         return builder;
     }
 
-    pub fn block_code(self: *AstBuilder, children: std.ArrayList(Element)) *AstBuilder {
-        const el = Element{
+    pub fn block_code(self: *AstBuilder, children: std.ArrayList(ast.Element)) *AstBuilder {
+        const el = ast.Element{
             .block_code = .{
                 .children = children
             }
@@ -37,8 +35,8 @@ pub const AstBuilder = struct {
         return self;
     }
 
-    pub fn paragraph(self: *AstBuilder, children: std.ArrayList(Element)) *AstBuilder {
-        const el = Element{
+    pub fn paragraph(self: *AstBuilder, children: std.ArrayList(ast.Element)) *AstBuilder {
+        const el = ast.Element{
             .paragraph = .{
                 .children = children
             }
@@ -47,8 +45,8 @@ pub const AstBuilder = struct {
         return self.node(el);
     }
 
-    pub fn modifier(self: *AstBuilder, tag: Element.Modifier.Tag, children: std.ArrayList(Element)) *AstBuilder {
-        const el = Element{
+    pub fn modifier(self: *AstBuilder, tag: ast.Element.Modifier.Tag, children: std.ArrayList(ast.Element)) *AstBuilder {
+        const el = ast.Element{
             .modifier = .{
                 .children = children,
                 .tag = tag,
@@ -58,34 +56,34 @@ pub const AstBuilder = struct {
         return self.node(el);
     }
 
-    pub fn text(self: *AstBuilder, token: Token) *AstBuilder {
-        return self.leaf(@tagName(Element.text), token);
+    pub fn text(self: *AstBuilder, token: Tokenizer.Token) *AstBuilder {
+        return self.leaf(@tagName(ast.Element.text), token);
     }
 
-    fn node(self: *AstBuilder, el: Element) *AstBuilder {
+    fn node(self: *AstBuilder, el: ast.Element) *AstBuilder {
         self.elements.append(el) catch unreachable;
         return self;
     }
 
-    fn leaf(self: *AstBuilder, comptime tag_name: []const u8, token: Token) *AstBuilder {
+    fn leaf(self: *AstBuilder, comptime tag_name: []const u8, token: Tokenizer.Token) *AstBuilder {
         self.elements.append(
             @unionInit(
-                Element,
+                ast.Element,
                 tag_name,
-                Span.from(token)
+                ast.Span.from(token)
             )
         ) catch unreachable;
 
         return self;
     }
 
-    pub fn build(self: *AstBuilder) std.ArrayList(Element) {
+    pub fn build(self: *AstBuilder) std.ArrayList(ast.Element) {
         defer allocator.destroy(self);
         return self.elements;
     }
 };
 
-pub fn expectEqual(expected_ast: std.ArrayList(Element), actual_ast: std.ArrayList(Element)) !void {
+pub fn expectEqual(expected_ast: std.ArrayList(ast.Element), actual_ast: std.ArrayList(ast.Element)) !void {
     if (expected_ast.items.len != actual_ast.items.len) {
         return error.TestExpectedEqual;
     }
@@ -113,14 +111,14 @@ pub fn expectEqual(expected_ast: std.ArrayList(Element), actual_ast: std.ArrayLi
                 try expectEqual(modifier.children, actual.modifier.children);
             },
             .img => |img| {
-                if (!std.meta.eql(img.url, actual.img.url)) {
+                if (!std.meta.eql(img.src, actual.img.src)) {
                     return error.TestExpectedEqual;
                 }
 
                 try expectEqual(img.children, actual.img.children);
             },
             .url => |url| {
-                if (!std.meta.eql(url.url, actual.url.url)) {
+                if (!std.meta.eql(url.href, actual.url.href)) {
                     return error.TestExpectedEqual;
                 }
 

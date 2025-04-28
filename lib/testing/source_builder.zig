@@ -1,10 +1,10 @@
 const std = @import("std");
-const Token = @import("../Tokenizer.zig").Token;
-const Element = @import("../ast.zig").Element;
+const Tokenizer = @import("../Tokenizer.zig");
+const ast = @import("../ast.zig");
 
 const allocator = std.testing.allocator;
 
-pub fn tok(tag: Token.Tag, source: []const u8) *SourceBuilder {
+pub fn tok(tag: Tokenizer.Token.Tag, source: []const u8) *SourceBuilder {
     const builder = allocator.create(SourceBuilder) catch unreachable;
     builder.* = .{
         .source = .init(allocator),
@@ -26,7 +26,7 @@ pub fn eof() Source {
 
 pub const Source = struct {
     buffer: [:0]const u8,
-    tokens: []const Token,
+    tokens: []const Tokenizer.Token,
 
     pub fn deinit(self: *const Source) void {
         allocator.free(self.buffer);
@@ -36,14 +36,14 @@ pub const Source = struct {
 
 pub const SourceBuilder = struct {
     source: std.ArrayList(u8),
-    tokens: std.ArrayList(Token),
+    tokens: std.ArrayList(Tokenizer.Token),
 
     pub fn deinit(self: *SourceBuilder) void {
         self.tokens.deinit();
         allocator.destroy(self);
     }
 
-    pub fn tok(self: *SourceBuilder, tag: Token.Tag, source: []const u8) *SourceBuilder {
+    pub fn tok(self: *SourceBuilder, tag: Tokenizer.Token.Tag, source: []const u8) *SourceBuilder {
         var start_index: usize = 0;
         if (self.tokens.items.len > 0) {
             start_index = self.tokens.getLast().loc.end_index;

@@ -1,12 +1,12 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Token = @import("Tokenizer.zig").Token;
+const Tokenizer = @import("Tokenizer.zig");
 
 pub const Span = struct {
     start: usize,
     end: usize,
 
-    pub fn from(token: Token) Span {
+    pub fn from(token: Tokenizer.Token) Span {
         return .{
             .start = token.loc.start_index,
             .end = token.loc.end_index,
