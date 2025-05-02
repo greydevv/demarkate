@@ -49,11 +49,6 @@ type of directive.
 ```
 @url<text; https://www.example.com>
 ```
-To display the URL literally, omit the first parameter:
-```
-@url<; https://www.example.com>
-     ^ don't forget the semicolon!
-```
 
 ### Images
 
