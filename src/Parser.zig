@@ -87,8 +87,8 @@ pub fn parse(self: *Parser) !void {
         const el = switch (self.tokens[self.tok_i].tag) {
             .pound => try self.parseHeading(),
             .newline => try self.parseLineBreak(),
-            .keyword => try self.parseBuiltIn(),
-            .ampersat => try self.parseBuiltIn(),
+            .keyword => try self.parseDirective(),
+            .ampersat => try self.parseDirective(),
             else => try self.parseParagraph(),
         };
         errdefer el.deinit();
@@ -97,7 +97,7 @@ pub fn parse(self: *Parser) !void {
     }
 }
 
-fn parseBuiltIn(self: *Parser) Error!ast.Element {
+fn parseDirective(self: *Parser) Error!ast.Element {
     const keyword_tag = self.eatToken().tag.keyword;
 
     const attrs = try self.parseAttributes();
@@ -356,7 +356,7 @@ fn parseInline(self: *Parser) Error!ast.Element {
     return switch (token.tag) {
         .eof => self.err(.unexpected_token, token),
         .backtick => self.parseInlineCode(),
-        .keyword => self.parseBuiltIn(),
+        .keyword => self.parseDirective(),
         else => ast.Element{
             .text = self.eatToken().span
         },
