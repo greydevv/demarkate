@@ -1,22 +1,6 @@
 const std = @import("std");
-const Allocator = std.mem.Allocator;
+const pos = @import("pos.zig");
 const Tokenizer = @import("Tokenizer.zig");
-
-pub const Span = struct {
-    start: usize,
-    end: usize,
-
-    pub fn from(token: Tokenizer.Token) Span {
-        return .{
-            .start = token.loc.start_index,
-            .end = token.loc.end_index,
-        };
-    }
-
-    pub fn slice(self: *const Span, buffer: [:0]const u8) []const u8 {
-        return buffer[self.start..self.end];
-    }
-};
 
 pub const Element = union(enum) {
     heading: struct {
@@ -28,21 +12,21 @@ pub const Element = union(enum) {
     },
     url: struct {
         children: std.ArrayList(Element),
-        href: Span,
+        href: pos.Span,
     },
     img: struct {
         children: std.ArrayList(Element),
-        src: Span,
+        src: pos.Span,
     },
     block_code: struct {
-        lang: ?Span,
+        lang: ?pos.Span,
         children: std.ArrayList(Element),
     },
     modifier: Modifier,
-    inline_code: Span,
-    code_literal: Span,
-    text: Span,
-    line_break: Span,
+    inline_code: pos.Span,
+    code_literal: pos.Span,
+    text: pos.Span,
+    line_break: pos.Span,
 
     pub const Modifier = struct {
         children: std.ArrayList(Element),

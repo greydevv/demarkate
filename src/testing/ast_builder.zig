@@ -1,5 +1,6 @@
 const std = @import("std");
 const Tokenizer = @import("../Tokenizer.zig");
+const pos = @import("../pos.zig");
 const ast = @import("../ast.zig");
 
 const allocator = std.testing.allocator;
@@ -70,7 +71,7 @@ pub const AstBuilder = struct {
             @unionInit(
                 ast.Element,
                 tag_name,
-                ast.Span.from(token)
+                token.span,
             )
         ) catch unreachable;
 

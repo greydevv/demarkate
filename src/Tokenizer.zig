@@ -1,10 +1,11 @@
 const std = @import("std");
+const pos = @import("pos.zig");
 
 const Tokenizer = @This();
 
 pub const Token = struct {
     tag: Tag,
-    loc: Loc,
+    span: pos.Span,
 
     pub const Tag = union(enum) {
         pound,
@@ -32,15 +33,6 @@ pub const Token = struct {
             return std.meta.eql(self.*, other);
         }
     };
-
-    pub const Loc = struct {
-        start_index: usize,
-        end_index: usize,
-    };
-
-    pub fn len(self: *const Token) usize {
-        return self.loc.end_index - self.loc.start_index;
-    }
 };
 
 buffer: [:0]const u8,
@@ -69,9 +61,9 @@ pub fn next(self: *Tokenizer) Token {
 fn nextStructural(self: *Tokenizer) ?Token {
     var token = Token{
         .tag = undefined,
-        .loc = .{
-            .start_index = self.index,
-            .end_index = undefined,
+        .span = .{
+            .start = self.index,
+            .end = undefined,
         }
     };
 
@@ -130,7 +122,7 @@ fn nextStructural(self: *Tokenizer) ?Token {
                 self.index += 1;
             }
 
-            const source = self.buffer[(token.loc.start_index + 1)..self.index];
+            const source = self.buffer[(token.span.start + 1)..self.index];
 
             // TODO: comptime this?
             if (std.mem.eql(u8, "code", source)) {
@@ -154,23 +146,23 @@ fn nextStructural(self: *Tokenizer) ?Token {
         else => return null
     }
 
-    token.loc.end_index = self.index;
+    token.span.end = self.index;
     return token;
 }
 
 fn literalText(self: *Tokenizer) Token {
     var token = Token{
         .tag = .literal_text,
-        .loc = .{
-            .start_index = self.index,
-            .end_index = undefined,
+        .span = .{
+            .start = self.index,
+            .end = undefined,
         }
     };
 
     while (true) {
         // consume until we get some other token, then cache it
         if (self.nextStructural()) |next_token| {
-            token.loc.end_index = next_token.loc.start_index;
+            token.span.end = next_token.span.start;
             self.cached_token = next_token;
             break;
         }
@@ -180,7 +172,7 @@ fn literalText(self: *Tokenizer) Token {
             // TODO: should 'escaping' EOF be an error?
             if (self.buffer[self.index + 1] == 0) {
                 self.index += 1;
-                token.loc.end_index = self.index;
+                token.span.end = self.index;
                 break;
             }
 
@@ -285,14 +277,14 @@ fn expectTokens(
     for (expected_tokens) |expected| {
         const received = tokenizer.next();
         try std.testing.expectEqual(expected.tag, received.tag);
-        try std.testing.expectEqual(expected.loc.start_index, received.loc.start_index);
-        try std.testing.expectEqual(expected.loc.end_index, received.loc.end_index);
+        try std.testing.expectEqual(expected.span.start, received.span.start);
+        try std.testing.expectEqual(expected.span.end, received.span.end);
     }
 
     const eof_token = tokenizer.next();
     try std.testing.expectEqual(Token.Tag.eof, eof_token.tag);
-    try std.testing.expectEqual(buffer.len, eof_token.loc.start_index);
-    try std.testing.expectEqual(buffer.len, eof_token.loc.end_index);
+    try std.testing.expectEqual(buffer.len, eof_token.span.start);
+    try std.testing.expectEqual(buffer.len, eof_token.span.end);
 
     // tokenizer should be "drained" at this point (EOF)
     try std.testing.expectEqual(buffer.len, tokenizer.index);

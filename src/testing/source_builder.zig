@@ -44,16 +44,16 @@ pub const SourceBuilder = struct {
     }
 
     pub fn tok(self: *SourceBuilder, tag: Tokenizer.Token.Tag, source: []const u8) *SourceBuilder {
-        var start_index: usize = 0;
+        var start: usize = 0;
         if (self.tokens.items.len > 0) {
-            start_index = self.tokens.getLast().loc.end_index;
+            start = self.tokens.getLast().span.end;
         }
 
         self.tokens.append(.{
             .tag = tag,
-            .loc = .{
-                .start_index = start_index,
-                .end_index = start_index + source.len,
+            .span = .{
+                .start = start,
+                .end = start + source.len,
             }
         }) catch unreachable;
 

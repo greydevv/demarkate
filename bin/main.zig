@@ -1,7 +1,5 @@
 const std = @import("std");
 const dmk = @import("demarkate");
-const File = std.fs.File;
-const Allocator = std.mem.Allocator;
 
 const sample_file_path = "/Users/gr.murray/Developer/zig/markdown-parser/samples/test.md";
 
@@ -51,8 +49,8 @@ pub fn main() !void {
     std.debug.print("{s}\n", .{ renderer.buffer.items });
 }
 
-fn readFileAlloc(allocator: Allocator, file_path: []const u8) ![:0]u8 {
-    const open_flags = File.OpenFlags { .mode = .read_only };
+fn readFileAlloc(allocator: std.mem.Allocator, file_path: []const u8) ![:0]u8 {
+    const open_flags = std.fs.File.OpenFlags { .mode = .read_only };
     const file = try std.fs.openFileAbsolute(file_path, open_flags);
     defer file.close();
 
@@ -65,7 +63,7 @@ fn readFileAlloc(allocator: Allocator, file_path: []const u8) ![:0]u8 {
     );
 }
 
-fn printAst(allocator: Allocator, el: *const dmk.ast.Element, depth: u32, tokenizer: *const dmk.Tokenizer) !void {
+fn printAst(allocator: std.mem.Allocator, el: *const dmk.ast.Element, depth: u32, tokenizer: *const dmk.Tokenizer) !void {
     const indent = try allocator.alloc(u8, depth * 2);
     defer allocator.free(indent);
     @memset(indent, ' ');

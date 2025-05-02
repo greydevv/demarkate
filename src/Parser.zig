@@ -1,11 +1,11 @@
 const std = @import("std");
-const Allocator = std.mem.Allocator;
+const pos = @import("pos.zig");
 const ast = @import("ast.zig");
 const Tokenizer = @import("Tokenizer.zig");
 
 const Parser = @This();
 
-const Error = Allocator.Error || error{ ParseError };
+const Error = std.mem.Allocator.Error || error{ ParseError };
 
 pub const ParseError = struct {
     tag: Tag,
@@ -18,7 +18,7 @@ pub const ParseError = struct {
         unterminated_inline_code,
     };
 
-    pub fn allocMsg(self: *const ParseError, allocator: Allocator) ![]const u8 {
+    pub fn allocMsg(self: *const ParseError, allocator: std.mem.Allocator) ![]const u8 {
         const tag = self.tag;
         const token = self.token;
 
@@ -28,8 +28,8 @@ pub const ParseError = struct {
                     allocator,
                     "Unexpected token ({s}) from {} to {}", .{
                         @tagName(token.tag),
-                        token.loc.start_index,
-                        token.loc.end_index
+                        token.span.start,
+                        token.span.end
                     }
                 ),
             .unterminated_modifier =>
@@ -55,13 +55,13 @@ pub const ParseError = struct {
     }
 };
 
-allocator: Allocator,
+allocator: std.mem.Allocator,
 tokens: []const Tokenizer.Token,
 tok_i: usize,
 elements: std.ArrayList(ast.Element),
 errors: std.ArrayList(ParseError),
 
-pub fn init(allocator: Allocator, tokens: []const Tokenizer.Token) Parser {
+pub fn init(allocator: std.mem.Allocator, tokens: []const Tokenizer.Token) Parser {
     return .{
         .allocator = allocator,
         .tokens = tokens,
@@ -119,12 +119,12 @@ fn parseBuiltIn(self: *Parser) Error!ast.Element {
     };
 }
 
-fn parseAttributes(self: *Parser) !std.ArrayList(ast.Span) {
-    var attrs = std.ArrayList(ast.Span).init(self.allocator);
+fn parseAttributes(self: *Parser) !std.ArrayList(pos.Span) {
+    var attrs = std.ArrayList(pos.Span).init(self.allocator);
     errdefer attrs.deinit();
 
     while (self.tokens[self.tok_i].tag != .open_angle) {
-        var span: ?ast.Span = null;
+        var span: ?pos.Span = null;
         attr: while (true) {
             const token = self.tokens[self.tok_i];
             switch (token.tag) {
@@ -141,9 +141,9 @@ fn parseAttributes(self: *Parser) !std.ArrayList(ast.Span) {
                     self.nextToken();
 
                     if (span) |*some_span| {
-                        some_span.end = token.loc.end_index;
+                        some_span.end = token.span.end;
                     } else {
-                        span = .from(token);
+                        span = token.span;
                     }
                 }
             }
@@ -165,7 +165,7 @@ fn parseInlineBuiltIn(self: *Parser) Error!ast.Element {
     }
 }
 
-fn parseImg(self: *Parser, _: ?std.ArrayList(ast.Span)) Error!ast.Element {
+fn parseImg(self: *Parser, _: ?std.ArrayList(pos.Span)) Error!ast.Element {
     const url = (try self.parseUrl(null)).url;
     const img = ast.Element{
         .img = .{
@@ -177,7 +177,7 @@ fn parseImg(self: *Parser, _: ?std.ArrayList(ast.Span)) Error!ast.Element {
     return img;
 }
 
-fn parseUrl(self: *Parser, _: ?std.ArrayList(ast.Span)) Error!ast.Element {
+fn parseUrl(self: *Parser, _: ?std.ArrayList(pos.Span)) Error!ast.Element {
     var url = ast.Element{
         .url = .{
             .children = .init(self.allocator),
@@ -208,7 +208,7 @@ fn parseUrl(self: *Parser, _: ?std.ArrayList(ast.Span)) Error!ast.Element {
     return url;
 }
 
-fn parseBlockCode(self: *Parser, attrs: std.ArrayList(ast.Span)) Error!ast.Element {
+fn parseBlockCode(self: *Parser, attrs: std.ArrayList(pos.Span)) Error!ast.Element {
     const lang = if (attrs.items.len > 0) attrs.items[0] else null;
 
     var code = ast.Element{
@@ -243,8 +243,8 @@ fn parseBlockCode(self: *Parser, attrs: std.ArrayList(ast.Span)) Error!ast.Eleme
     return code;
 }
 
-fn eatUntilTokens(self: *Parser, comptime tags: []const Tokenizer.Token.Tag) !?ast.Span {
-    var span: ?ast.Span = null;
+fn eatUntilTokens(self: *Parser, comptime tags: []const Tokenizer.Token.Tag) !?pos.Span {
+    var span: ?pos.Span = null;
     blk: while (true) {
         const token = self.tokens[self.tok_i];
         inline for (tags) |stop_tag| {
@@ -258,9 +258,9 @@ fn eatUntilTokens(self: *Parser, comptime tags: []const Tokenizer.Token.Tag) !?a
         }
 
         if (span) |*some_span| {
-            some_span.end = token.loc.end_index;
+            some_span.end = token.span.end;
         } else {
-            span = .from(token);
+            span = token.span;
         }
 
         self.nextToken();
@@ -270,7 +270,7 @@ fn eatUntilTokens(self: *Parser, comptime tags: []const Tokenizer.Token.Tag) !?a
 }
 
 fn parseHeading(self: *Parser) Error!ast.Element {
-    const level = self.eatToken().len();
+    const level = self.eatToken().span.len();
     const children = try self.expectInlineUntilLineBreakOrEof();
     return ast.Element{
         .heading = .{
@@ -291,7 +291,7 @@ fn parseParagraph(self: *Parser) Error!ast.Element {
 
 fn parseInlineCode(self: *Parser) Error!ast.Element {
     const open_token = self.eatToken();
-    var span = ast.Span.from(self.tokens[self.tok_i]);
+    var span = self.tokens[self.tok_i].span;
 
     while (true) {
         const token = self.tokens[self.tok_i];
@@ -299,12 +299,12 @@ fn parseInlineCode(self: *Parser) Error!ast.Element {
             .newline,
             .eof => return self.err(.unterminated_inline_code, open_token),
             else => {
-                if (token.tag.equals(open_token.tag) and token.len() == open_token.len()) {
+                if (token.tag.equals(open_token.tag) and token.span.len() == open_token.span.len()) {
                     self.nextToken();
                     break;
                 }
 
-                span.end = token.loc.end_index;
+                span.end = token.span.end;
                 self.nextToken();
             },
         }
@@ -323,7 +323,7 @@ fn parseLineBreak(self: *Parser) Error!ast.Element {
 
     _ = self.nextToken();
     return ast.Element{
-        .line_break = ast.Span.from(token)
+        .line_break = token.span
     };
 }
 
@@ -358,7 +358,7 @@ fn parseInline(self: *Parser) Error!ast.Element {
         .backtick => self.parseInlineCode(),
         .keyword => self.parseBuiltIn(),
         else => ast.Element{
-            .text = .from(self.eatToken())
+            .text = self.eatToken().span
         },
     };
 }

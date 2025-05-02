@@ -1,8 +1,6 @@
 const std = @import("std");
+const pos = @import("pos.zig");
 const ast = @import("ast.zig");
-
-const Element = ast.Element;
-const Span = ast.Span;
 
 const Error = error{ FormatError };
 
@@ -15,13 +13,13 @@ pub const Formatter = struct {
         };
     }
 
-    pub fn format(self: *const Formatter, elements: []Element) Error!void {
+    pub fn format(self: *const Formatter, elements: []ast.Element) Error!void {
         for (elements) |*el| {
             try self.formatElement(el);
         }
     }
 
-    fn formatElement(self: *const Formatter, el: *Element) Error!void {
+    fn formatElement(self: *const Formatter, el: *ast.Element) Error!void {
         switch (el.*) {
             .paragraph => |*paragraph| {
                 return self.format(paragraph.children.items);
@@ -29,7 +27,7 @@ pub const Formatter = struct {
             .heading => |*heading| {
                 if (heading.children.items.len > 0) {
                     const child = &heading.children.items[0];
-                    if (child.* == Element.text) {
+                    if (child.* == ast.Element.text) {
                         self.stripLeadingWhitespace(&child.text);
                     }
                 }
@@ -59,7 +57,7 @@ pub const Formatter = struct {
         }
     }
 
-    fn stripLeadingWhitespace(self: *const Formatter, span: *Span) void {
+    fn stripLeadingWhitespace(self: *const Formatter, span: *pos.Span) void {
         const literal = span.slice(self.source);
 
         var new_start: usize = 0;
@@ -70,7 +68,7 @@ pub const Formatter = struct {
         span.start += new_start;
     }
 
-    fn stripTrailingWhitespace(self: *const Formatter, span: *Span) void {
+    fn stripTrailingWhitespace(self: *const Formatter, span: *pos.Span) void {
         const literal = span.slice(self.source);
 
         var new_end: usize = 0;
@@ -81,7 +79,7 @@ pub const Formatter = struct {
         span.end -= new_end;
     }
 
-    fn stripSurroundingWhitespace(self: *const Formatter, span: *Span) void {
+    fn stripSurroundingWhitespace(self: *const Formatter, span: *pos.Span) void {
         self.stripLeadingWhitespace(span);
         self.stripTrailingWhitespace(span);
     }

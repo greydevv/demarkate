@@ -1,18 +1,17 @@
 const std = @import("std");
+const pos = @import("../pos.zig");
 const ast = @import("../ast.zig");
-const Token = @import("../Tokenizer.zig").Token;
 
-const Allocator = std.mem.Allocator;
 pub const Error = error{OutOfMemory};
 
 const Attr = std.meta.Tuple(&.{ []const u8, []const u8 });
 
 pub const Renderer = struct {
-    allocator: Allocator,
+    allocator: std.mem.Allocator,
     source: [:0]const u8,
     buffer: std.ArrayList(u8),
 
-    pub fn init(allocator: Allocator, source: [:0]const u8) Renderer {
+    pub fn init(allocator: std.mem.Allocator, source: [:0]const u8) Renderer {
         return .{
             .allocator = allocator,
             .source = source,
@@ -181,7 +180,7 @@ pub const Renderer = struct {
         try self.buffer.appendSlice(tag_close);
     }
 
-    fn appendSpan(self: *Renderer, span: ast.Span) !void {
+    fn appendSpan(self: *Renderer, span: pos.Span) !void {
         const source = span.slice(self.source);
         try self.buffer.appendSlice(source);
     }
