@@ -4,19 +4,19 @@ const Tokenizer = @import("Tokenizer.zig");
 
 pub const Element = union(enum) {
     heading: struct {
-        children: std.ArrayList(Element),
         level: usize,
+        children: std.ArrayList(Element),
     },
     paragraph: struct {
         children: std.ArrayList(Element),
     },
     url: struct {
-        children: std.ArrayList(Element),
         href: pos.Span,
+        children: std.ArrayList(Element),
     },
     img: struct {
-        children: std.ArrayList(Element),
         src: pos.Span,
+        children: std.ArrayList(Element),
     },
     block_code: struct {
         lang: ?pos.Span,
