@@ -99,9 +99,6 @@ pub const Element = union(enum) {
     }
 
     pub fn lastChild(self: *Element) *Element {
-        // const active_tag = std.meta.activeTag(self.*);
-        // std.debug.print("\n{s}\n\n", .{ @typeName(@TypeOf(active_tag)) });
-
         return &self.modifier.children.items[self.modifier.children.items.len - 1];
     }
 };
