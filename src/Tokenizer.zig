@@ -1,8 +1,6 @@
 const std = @import("std");
 const pos = @import("pos.zig");
 
-const Tokenizer = @This();
-
 pub const Token = struct {
     tag: Tag,
     span: pos.Span,
@@ -34,6 +32,8 @@ pub const Token = struct {
         }
     };
 };
+
+const Tokenizer = @This();
 
 buffer: [:0]const u8,
 index: usize = 0,

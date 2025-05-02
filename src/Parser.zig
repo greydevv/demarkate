@@ -3,10 +3,6 @@ const pos = @import("pos.zig");
 const ast = @import("ast.zig");
 const Tokenizer = @import("Tokenizer.zig");
 
-const Parser = @This();
-
-const Error = std.mem.Allocator.Error || error{ ParseError };
-
 pub const ParseError = struct {
     tag: Tag,
     token: Tokenizer.Token,
@@ -55,11 +51,15 @@ pub const ParseError = struct {
     }
 };
 
+const Parser = @This();
+
 allocator: std.mem.Allocator,
 tokens: []const Tokenizer.Token,
 tok_i: usize,
 elements: std.ArrayList(ast.Element),
 errors: std.ArrayList(ParseError),
+
+const Error = std.mem.Allocator.Error || error{ ParseError };
 
 pub fn init(allocator: std.mem.Allocator, tokens: []const Tokenizer.Token) Parser {
     return .{
