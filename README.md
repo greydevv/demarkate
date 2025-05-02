@@ -39,7 +39,7 @@ To escape any character (except EOF), use `\`.
 
 Directives take the following form:
 ```
-@identifier:attributes<content; parameters>
+@identifier:attributes<parameters>
 ```
 
 _Attributes_ are always optional and _parameters_ are enforced depending on the
