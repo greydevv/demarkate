@@ -16,13 +16,13 @@ pub const Token = struct {
         tilde,
         colon,
         semicolon,
-        ampersat,
         open_angle,
         close_angle,
         keyword: enum {
             code,
             url,
-            img
+            img,
+            callout
         },
         unknown,
         eof,
@@ -131,6 +131,8 @@ fn nextStructural(self: *Tokenizer) ?Token {
                 token.tag = .{ .keyword = .url };
             } else if (std.mem.eql(u8, "img", source)) {
                 token.tag = .{ .keyword = .img };
+            } else if (std.mem.eql(u8, "callout", source)) {
+                token.tag = .{ .keyword = .callout }; 
             } else {
                 token.tag = .literal_text;
             }

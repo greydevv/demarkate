@@ -10,13 +10,17 @@ pub const Element = union(enum) {
     paragraph: struct {
         children: std.ArrayList(Element),
     },
+    callout: struct {
+        type: ?pos.Span,
+        children: std.ArrayList(Element),
+    },
     url: struct {
         href: pos.Span,
         children: std.ArrayList(Element),
     },
     img: struct {
         src: pos.Span,
-        children: std.ArrayList(Element),
+        alt_text: ?pos.Span,
     },
     block_code: struct {
         lang: ?pos.Span,
@@ -48,7 +52,7 @@ pub const Element = union(enum) {
             .paragraph => |*el| {
                 deinitChildren(el);
             },
-            .img => |*el| {
+            .callout => |*el| {
                 deinitChildren(el);
             },
             .url => |*el| {
@@ -76,7 +80,7 @@ pub const Element = union(enum) {
                         try el.children.append(child);
                         return &el.children.items[el.children.items.len - 1];
                     },
-                    .img => |*el| {
+                    .callout => |*el| {
                         try el.children.append(child);
                         return &el.children.items[el.children.items.len - 1];
                     },

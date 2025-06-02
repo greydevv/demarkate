@@ -4,8 +4,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const lib_mod = b.createModule(.{
-        .root_source_file = b.path("src/root.zig"),
+    const demarkate = b.addModule("demarkate", .{
+        .root_source_file = b.path("src/demarkate.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -13,7 +13,7 @@ pub fn build(b: *std.Build) void {
     const lib = b.addLibrary(.{
         .linkage = .static,
         .name = "demarkate",
-        .root_module = lib_mod,
+        .root_module = demarkate,
     });
 
     b.installArtifact(lib);
@@ -24,7 +24,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    exe_mod.addImport("demarkate", lib_mod);
+    exe_mod.addImport("demarkate", demarkate);
 
     const exe = b.addExecutable(.{
         .name = "text-to-html",
@@ -47,7 +47,7 @@ pub fn build(b: *std.Build) void {
 
     // Testing lib
     const lib_unit_tests = b.addTest(.{
-        .root_module = lib_mod
+        .root_module = demarkate
     });
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);

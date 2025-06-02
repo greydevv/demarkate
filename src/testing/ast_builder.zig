@@ -116,7 +116,9 @@ pub fn expectEqual(expected_ast: std.ArrayList(ast.Element), actual_ast: std.Arr
                     return error.TestExpectedEqual;
                 }
 
-                try expectEqual(img.children, actual.img.children);
+                if (!std.meta.eql(img.alt_text, actual.img.alt_text)) {
+                    return error.TestExpectedEqual;
+                }
             },
             .url => |url| {
                 if (!std.meta.eql(url.href, actual.url.href)) {

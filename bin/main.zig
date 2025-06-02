@@ -1,7 +1,7 @@
 const std = @import("std");
 const dmk = @import("demarkate");
 
-const sample_file_path = "/Users/gr.murray/Developer/zig/markdown-parser/samples/test.md";
+const sample_file_path = "/Users/gr.murray/Developer/zig/demarkate/samples/test.md";
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -58,7 +58,7 @@ fn readFileAlloc(allocator: std.mem.Allocator, file_path: []const u8) ![:0]u8 {
         allocator,
         8192,
         null,
-        @alignOf(u8),
+        std.mem.Alignment.@"1",
         0
     );
 }
@@ -96,6 +96,12 @@ fn printAst(allocator: std.mem.Allocator, el: *const dmk.ast.Element, depth: u32
                 try printAst(allocator, &child, depth + 1, tokenizer);
             }
         },
+        .callout => |node| {
+            std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
+            for (node.children.items) |child| {
+                try printAst(allocator, &child, depth + 1, tokenizer);
+            }
+        },
         .url => |node| {
             std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
             for (node.children.items) |child| {
@@ -104,8 +110,9 @@ fn printAst(allocator: std.mem.Allocator, el: *const dmk.ast.Element, depth: u32
         },
         .img => |node| {
             std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
-            for (node.children.items) |child| {
-                try printAst(allocator, &child, depth + 1, tokenizer);
+
+            if (node.alt_text) |alt_text| {
+                std.debug.print("    {s}alt={s}\n", .{ indent, alt_text.slice(tokenizer.buffer) });
             }
         },
         .block_code => |node| {

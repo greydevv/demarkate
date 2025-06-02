@@ -53,16 +53,28 @@ fn formatElement(self: *const Formatter, el: *ast.Element) Error!void {
         },
         .img => |*img| {
             self.stripSurroundingWhitespace(&img.src);
+
+            if (img.alt_text) |*alt| {
+                self.stripSurroundingWhitespace(alt);
+
+                if (alt.len() == 0) {
+                    return error.FormatError;
+                }
+            }
         },
         else => return
     }
 }
 
 fn stripLeadingWhitespace(self: *const Formatter, span: *pos.Span) void {
+    if (span.len() == 0) {
+        return;
+    }
+
     const literal = span.slice(self.source);
 
     var new_start: usize = 0;
-    while (literal[new_start] == ' ') {
+    while (new_start < literal.len and literal[new_start] == ' ') {
         new_start += 1;
     }
 
@@ -70,10 +82,14 @@ fn stripLeadingWhitespace(self: *const Formatter, span: *pos.Span) void {
 }
 
 fn stripTrailingWhitespace(self: *const Formatter, span: *pos.Span) void {
+    if (span.len() == 0) {
+        return;
+    }
+
     const literal = span.slice(self.source);
 
     var new_end: usize = 0;
-    while (literal[literal.len - 1 - new_end] == ' ') {
+    while (new_end < literal.len and literal[literal.len - 1 - new_end] == ' ') {
         new_end += 1;
     }
 
@@ -83,4 +99,42 @@ fn stripTrailingWhitespace(self: *const Formatter, span: *pos.Span) void {
 fn stripSurroundingWhitespace(self: *const Formatter, span: *pos.Span) void {
     self.stripLeadingWhitespace(span);
     self.stripTrailingWhitespace(span);
+}
+
+test "strips leading whitespace from whitespace string" {
+    const source: [:0]const u8 = "     ";
+    var span = pos.Span{
+        .start = 0,
+        .end = 4
+    };
+
+    const formatter = Formatter.init(source);
+    formatter.stripLeadingWhitespace(&span);
+
+    try std.testing.expect(std.meta.eql(
+        span,
+        pos.Span{
+            .start = 4,
+            .end = 4
+        }
+    ));
+}
+
+test "strips trailing whitespace from whitespace string" {
+    const source: [:0]const u8 = "     ";
+    var span = pos.Span{
+        .start = 0,
+        .end = 4
+    };
+
+    const formatter = Formatter.init(source);
+    formatter.stripTrailingWhitespace(&span);
+
+    try std.testing.expect(std.meta.eql(
+        span,
+        pos.Span{
+            .start = 0,
+            .end = 0
+        }
+    ));
 }

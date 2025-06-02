@@ -88,7 +88,6 @@ pub fn parse(self: *Parser) !void {
             .pound => try self.parseHeading(),
             .newline => try self.parseLineBreak(),
             .keyword => try self.parseDirective(),
-            .ampersat => try self.parseDirective(),
             else => try self.parseParagraph(),
         };
         errdefer el.deinit();
@@ -104,7 +103,7 @@ fn parseDirective(self: *Parser) Error!ast.Element {
     defer attrs.deinit();
 
     if (self.tokens[self.tok_i].tag == .open_angle) {
-        self.nextToken();
+        self.skipToken();
     } else {
         return self.err(.unexpected_token, self.tokens[self.tok_i]);
     }
@@ -116,6 +115,7 @@ fn parseDirective(self: *Parser) Error!ast.Element {
         .code => try self.parseBlockCode(attrs),
         .img => try self.parseImg(attrs),
         .url => try self.parseUrl(attrs),
+        .callout => try self.parseCallout(attrs),
     };
 }
 
@@ -132,13 +132,13 @@ fn parseAttributes(self: *Parser) !std.ArrayList(pos.Span) {
                     break :attr;
                 },
                 .colon => {
-                    self.nextToken();
+                    self.skipToken();
                     break :attr;
                 },
                 .newline,
                 .eof => return self.err(.unexpected_token, token),
                 else => {
-                    self.nextToken();
+                    self.skipToken();
 
                     if (span) |*some_span| {
                         some_span.end = token.span.end;
@@ -157,22 +157,46 @@ fn parseAttributes(self: *Parser) !std.ArrayList(pos.Span) {
     return attrs;
 }
 
-fn parseInlineBuiltIn(self: *Parser) Error!ast.Element {
-    const tag = self.eatToken().tag.keyword;
+fn parseCallout(self: *Parser, _: ?std.ArrayList(pos.Span)) Error!ast.Element {
+    var callout = ast.Element{
+        .callout = .{
+            .type = undefined,
+            .children = .init(self.allocator),
+        }
+    };
+    errdefer callout.deinit();
 
-    switch (tag) {
-        else => unreachable,
+    callout.callout.type = try self.eatUntilTokens(&.{ .semicolon });
+    self.skipToken();
+
+    while (self.tokens[self.tok_i].tag != .close_angle) {
+        const child = try self.parseInline();
+        _ = try callout.addChild(child);
     }
+
+    self.skipToken();
+
+    return callout;
 }
 
 fn parseImg(self: *Parser, _: ?std.ArrayList(pos.Span)) Error!ast.Element {
-    const url = (try self.parseUrl(null)).url;
-    const img = ast.Element{
+    var img = ast.Element{
         .img = .{
-            .children = url.children,
-            .src = url.href,
+            .src = undefined,
+            .alt_text = undefined
         }
     };
+    errdefer img.deinit();
+
+    img.img.alt_text = try self.eatUntilTokens(&.{ .semicolon });
+    self.skipToken();
+
+    if (try self.eatUntilTokens(&.{ .close_angle })) |src| {
+        img.img.src = src;
+        self.skipToken();
+    } else {
+        return self.err(.unexpected_token, self.tokens[self.tok_i]);
+    }
 
     return img;
 }
@@ -191,19 +215,14 @@ fn parseUrl(self: *Parser, _: ?std.ArrayList(pos.Span)) Error!ast.Element {
         _ = try url.addChild(child);
     }
 
-    self.nextToken();
-
-
+    self.skipToken();
 
     if (try self.eatUntilTokens(&.{ .close_angle })) |href| {
-        // TODO: lol
         url.url.href = href;
+        self.skipToken();
     } else {
         return self.err(.unexpected_token, self.tokens[self.tok_i]);
     }
-
-
-    self.nextToken();
 
     return url;
 }
@@ -233,7 +252,7 @@ fn parseBlockCode(self: *Parser, attrs: std.ArrayList(pos.Span)) Error!ast.Eleme
                 _ = try code.addChild(line_break);
             },
             .close_angle => {
-                self.nextToken();
+                self.skipToken();
                 break;
             },
             else => unreachable,
@@ -263,7 +282,7 @@ fn eatUntilTokens(self: *Parser, comptime tags: []const Tokenizer.Token.Tag) !?p
             span = token.span;
         }
 
-        self.nextToken();
+        self.skipToken();
     }
 
     return span;
@@ -300,12 +319,12 @@ fn parseInlineCode(self: *Parser) Error!ast.Element {
             .eof => return self.err(.unterminated_inline_code, open_token),
             else => {
                 if (token.tag.equals(open_token.tag) and token.span.len() == open_token.span.len()) {
-                    self.nextToken();
+                    self.skipToken();
                     break;
                 }
 
                 span.end = token.span.end;
-                self.nextToken();
+                self.skipToken();
             },
         }
     }
@@ -321,7 +340,7 @@ fn parseLineBreak(self: *Parser) Error!ast.Element {
         return self.err(.unexpected_token, token);
     }
 
-    _ = self.nextToken();
+    _ = self.skipToken();
     return ast.Element{
         .line_break = token.span
     };
@@ -398,7 +417,7 @@ fn parseInlineModifier(self: *Parser) Error!ast.Element {
                 try el_stack.append(old_top.lastChild());
             }
 
-            self.nextToken();
+            self.skipToken();
         } else {
             const child_el = try self.parseInline();
             _ = try el_stack.getLast().addChild(child_el);
@@ -422,7 +441,7 @@ fn modifierTagOrNull(token: Tokenizer.Token) ?ast.Element.Modifier.Tag {
     };
 }
 
-fn nextToken(self: *Parser) void {
+fn skipToken(self: *Parser) void {
     if (self.tok_i == self.tokens.len - 1) {
         return;
     }

@@ -56,6 +56,17 @@ pub const Renderer = struct {
 
                 try self.closeTag("p");
             },
+            .callout => |callout| {
+                try self.openTagWithAttrs("div", &.{
+                    .{ "class", "dmk-callout" }
+                });
+
+                for (callout.children.items) |child| {
+                    try self.renderElement(child);
+                }
+
+                try self.closeTag("div");
+            },
             .modifier => |modifier|
                 switch (modifier.tag) {
                     .bold => {
@@ -119,15 +130,16 @@ pub const Renderer = struct {
                 try self.closeTag("code");
             },
             .img => |img| {
-                try self.openTagWithAttrs("img", &.{
-                    .{ "src",  img.src.slice(self.source) },
-                });
 
-                for (img.children.items) |child| {
-                    try self.renderElement(child);
+                var alt: []const u8 = "";
+                if (img.alt_text) |span| {
+                    alt = span.slice(self.source);
                 }
 
-                try self.closeTag("img");
+                try self.openTagWithAttrs("img", &.{
+                    .{ "src",  img.src.slice(self.source) },
+                    .{ "alt",  alt },
+                });
             },
             .url => |url| {
                 try self.openTagWithAttrs("a", &.{

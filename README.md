@@ -56,10 +56,10 @@ type of directive.
 @img<alt-text; https://www.example.com>
 @img<alt-text; /some/relative/path.jpg>
 ```
-If the image is purely decorative, use the `decorative` attribute and omit the alt-text:
+If the image is decorative, omit the alt-text:
 ```
-@img:decorative<; https://www.example.com>
-                ^ don't forget the semicolon!
+@img<; https://www.example.com>
+     ^ don't forget the semicolon!
 ```
 
 ### Block Code
