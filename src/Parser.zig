@@ -51,6 +51,11 @@ pub const ParseError = struct {
     }
 };
 
+const Context = enum {
+    @"inline",
+    block
+};
+
 const Parser = @This();
 
 allocator: std.mem.Allocator,
@@ -87,7 +92,10 @@ pub fn parse(self: *Parser) !void {
         const el = switch (self.tokens[self.tok_i].tag) {
             .pound => try self.parseHeading(),
             .newline => try self.parseLineBreak(),
-            .keyword => try self.parseDirective(),
+            .keyword_code,
+            .keyword_img,
+            .keyword_url,
+            .keyword_callout => try self.parseDirective(),
             else => try self.parseInline(),
         };
         errdefer el.deinit();
@@ -97,7 +105,7 @@ pub fn parse(self: *Parser) !void {
 }
 
 fn parseDirective(self: *Parser) Error!ast.Element {
-    const keyword_tag = self.eatToken().tag.keyword;
+    const keyword_tag = self.eatToken().tag;
 
     const attrs = try self.parseAttributes();
     defer attrs.deinit();
@@ -112,10 +120,11 @@ fn parseDirective(self: *Parser) Error!ast.Element {
     // switch (token.tag) { .keyword_code, .keyword_etc }.
     // Seemingly no need for indirection.
     return switch (keyword_tag) {
-        .code => try self.parseBlockCode(attrs),
-        .img => try self.parseImg(attrs),
-        .url => try self.parseUrl(attrs),
-        .callout => try self.parseCallout(attrs),
+        .keyword_code => try self.parseBlockCode(attrs),
+        .keyword_img => try self.parseImg(attrs),
+        .keyword_url => try self.parseUrl(attrs),
+        .keyword_callout => try self.parseCallout(attrs),
+        else => unreachable,
     };
 }
 
@@ -366,7 +375,10 @@ fn parseInline(self: *Parser) Error!ast.Element {
     return switch (token.tag) {
         .eof => self.err(.unexpected_token, token),
         .backtick => self.parseInlineCode(),
-        .keyword => self.parseDirective(),
+        .keyword_code,
+        .keyword_img,
+        .keyword_url,
+        .keyword_callout => self.parseDirective(),
         else => ast.Element{
             .text = self.eatToken().span
         },
@@ -573,7 +585,7 @@ test "parses nested modifiers" {
             )
             .build()
         )
-        .build();
+    .build();
     defer ast_builder.free(expected_ast);
 
     var parser = Parser.init(
@@ -619,7 +631,7 @@ test "parses pound as literal text" {
 
 test "parses block code" {
     const source = source_builder
-        .tok(.{ .keyword = .code }, "@code")
+        .tok(.keyword_code, "@code")
         .eof();
     defer source.deinit();
 

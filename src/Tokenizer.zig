@@ -5,7 +5,14 @@ pub const Token = struct {
     tag: Tag,
     span: pos.Span,
 
-    pub const Tag = union(enum) {
+    const keywords = std.StaticStringMap(Tag).initComptime(.{
+        .{ "code", .keyword_code },
+        .{ "url", .keyword_url },
+        .{ "img", .keyword_img },
+        .{ "callout", .keyword_callout },
+    });
+
+    pub const Tag = enum {
         pound,
         literal_text,
         newline,
@@ -18,14 +25,16 @@ pub const Token = struct {
         semicolon,
         open_angle,
         close_angle,
-        keyword: enum {
-            code,
-            url,
-            img,
-            callout
-        },
+        keyword_code,
+        keyword_url,
+        keyword_img,
+        keyword_callout,
         unknown,
         eof,
+
+        fn fromBytes(bytes: []const u8) ?Tag {
+            return Token.keywords.get(bytes);
+        } 
 
         pub fn equals(self: *const Tag, other: Tag) bool {
             return std.meta.eql(self.*, other);
@@ -124,15 +133,8 @@ fn nextStructural(self: *Tokenizer) ?Token {
 
             const source = self.buffer[(token.span.start + 1)..self.index];
 
-            // TODO: comptime this?
-            if (std.mem.eql(u8, "code", source)) {
-                token.tag = .{ .keyword =  .code };
-            } else if (std.mem.eql(u8, "url", source)) {
-                token.tag = .{ .keyword = .url };
-            } else if (std.mem.eql(u8, "img", source)) {
-                token.tag = .{ .keyword = .img };
-            } else if (std.mem.eql(u8, "callout", source)) {
-                token.tag = .{ .keyword = .callout }; 
+            if (Token.Tag.fromBytes(source)) |keyword_tag| {
+                token.tag = keyword_tag;
             } else {
                 token.tag = .literal_text;
             }
@@ -258,9 +260,10 @@ test "tokenizes structural token between literal text" {
 
 test "tokenizes keywords" {
     const source = source_builder
-        .tok(.{ .keyword = .code }, "@code")
-        .tok(.{ .keyword = .url }, "@url")
-        .tok(.{ .keyword = .img }, "@img")
+        .tok(.keyword_code, "@code")
+        .tok(.keyword_img, "@img")
+        .tok(.keyword_url, "@url")
+        .tok(.keyword_callout, "@callout")
         .eof();
     defer source.deinit();
 
