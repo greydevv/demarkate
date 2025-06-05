@@ -90,12 +90,6 @@ fn printAst(allocator: std.mem.Allocator, el: *const dmk.ast.Element, depth: u32
                 try printAst(allocator, &child, depth + 1, tokenizer);
             }
         },
-        .paragraph => |node| {
-            std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
-            for (node.children.items) |child| {
-                try printAst(allocator, &child, depth + 1, tokenizer);
-            }
-        },
         .callout => |node| {
             std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
             for (node.children.items) |child| {

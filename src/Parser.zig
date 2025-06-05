@@ -88,7 +88,7 @@ pub fn parse(self: *Parser) !void {
             .pound => try self.parseHeading(),
             .newline => try self.parseLineBreak(),
             .keyword => try self.parseDirective(),
-            else => try self.parseParagraph(),
+            else => try self.parseInline(),
         };
         errdefer el.deinit();
 
@@ -294,15 +294,6 @@ fn parseHeading(self: *Parser) Error!ast.Element {
     return ast.Element{
         .heading = .{
             .level = level,
-            .children = children
-        }
-    };
-}
-
-fn parseParagraph(self: *Parser) Error!ast.Element {
-    const children = try self.expectInlineUntilLineBreakOrEof();
-    return ast.Element{
-        .paragraph = .{
             .children = children
         }
     };
@@ -531,15 +522,12 @@ test "parses modifier" {
     const tokens = source.tokens;
 
     const expected_ast = AstBuilder.init()
-        .paragraph(AstBuilder.init()
-            .text(tokens[0])
-            .modifier(.bold, AstBuilder.init()
-                .text(tokens[2])
-                .build()
-            )
-            .text(tokens[4])
+        .text(tokens[0])
+        .modifier(.bold, AstBuilder.init()
+            .text(tokens[2])
             .build()
         )
+        .text(tokens[4])
         .build();
     defer ast_builder.free(expected_ast);
 
@@ -572,14 +560,11 @@ test "parses nested modifiers" {
     const tokens = source.tokens;
 
     const expected_ast = AstBuilder.init()
-        .paragraph(AstBuilder.init()
-            .modifier(.bold, AstBuilder.init()
-                .modifier(.italic, AstBuilder.init()
-                    .modifier(.underline, AstBuilder.init()
-                        .modifier(.strikethrough, AstBuilder.init()
-                            .text(tokens[4])
-                            .build()
-                        )
+        .modifier(.bold, AstBuilder.init()
+            .modifier(.italic, AstBuilder.init()
+                .modifier(.underline, AstBuilder.init()
+                    .modifier(.strikethrough, AstBuilder.init()
+                        .text(tokens[4])
                         .build()
                     )
                     .build()
@@ -614,12 +599,9 @@ test "parses pound as literal text" {
     const tokens = source.tokens;
 
     const expected_ast = AstBuilder.init()
-        .paragraph(AstBuilder.init()
-            .text(tokens[0])
-            .text(tokens[1])
-            .text(tokens[2])
-            .build()
-        )
+        .text(tokens[0])
+        .text(tokens[1])
+        .text(tokens[2])
         .build();
     defer ast_builder.free(expected_ast);
 

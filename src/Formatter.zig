@@ -22,9 +22,6 @@ pub fn format(self: *const Formatter, elements: []ast.Element) Error!void {
 
 fn formatElement(self: *const Formatter, el: *ast.Element) Error!void {
     switch (el.*) {
-        .paragraph => |*paragraph| {
-            return self.format(paragraph.children.items);
-        },
         .heading => |*heading| {
             if (heading.children.items.len > 0) {
                 const child = &heading.children.items[0];

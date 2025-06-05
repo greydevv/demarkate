@@ -36,16 +36,6 @@ pub const AstBuilder = struct {
         return self;
     }
 
-    pub fn paragraph(self: *AstBuilder, children: std.ArrayList(ast.Element)) *AstBuilder {
-        const el = ast.Element{
-            .paragraph = .{
-                .children = children
-            }
-        };
-
-        return self.node(el);
-    }
-
     pub fn modifier(self: *AstBuilder, tag: ast.Element.Modifier.Tag, children: std.ArrayList(ast.Element)) *AstBuilder {
         const el = ast.Element{
             .modifier = .{
@@ -97,9 +87,6 @@ pub fn expectEqual(expected_ast: std.ArrayList(ast.Element), actual_ast: std.Arr
         switch (expected) {
             .heading => |heading| {
                 try expectEqual(heading.children, actual.heading.children);
-            },
-            .paragraph => |paragraph| {
-                try expectEqual(paragraph.children, actual.paragraph.children);
             },
             .block_code => |block_code| {
                 try expectEqual(block_code.children, actual.block_code.children);

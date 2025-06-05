@@ -47,15 +47,6 @@ pub const Renderer = struct {
 
                 try self.closeTag("h1");
             },
-            .paragraph => |p| {
-                try self.openTag("p");
-
-                for (p.children.items) |child| {
-                    try self.renderElement(child);
-                }
-
-                try self.closeTag("p");
-            },
             .callout => |callout| {
                 try self.openTagWithAttrs("div", &.{
                     .{ "class", "dmk-callout" }

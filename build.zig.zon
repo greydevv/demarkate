@@ -1,7 +1,7 @@
 .{
     .name = .demarkate,
     .version = "0.0.0",
-    .fingerprint = 0x21f606c217a28862,
+    .fingerprint = 0x6efd09c41368e2b,
     .dependencies = .{},
 
     // Specifies the set of files and directories that are included in this package.

@@ -7,9 +7,6 @@ pub const Element = union(enum) {
         level: usize,
         children: std.ArrayList(Element),
     },
-    paragraph: struct {
-        children: std.ArrayList(Element),
-    },
     callout: struct {
         type: ?pos.Span,
         children: std.ArrayList(Element),
@@ -49,9 +46,6 @@ pub const Element = union(enum) {
             .heading => |*el| {
                 deinitChildren(el);
             },
-            .paragraph => |*el| {
-                deinitChildren(el);
-            },
             .callout => |*el| {
                 deinitChildren(el);
             },
@@ -73,10 +67,6 @@ pub const Element = union(enum) {
             Element =>
                 switch (self.*) {
                     .heading => |*el| {
-                        try el.children.append(child);
-                        return &el.children.items[el.children.items.len - 1];
-                    },
-                    .paragraph => |*el| {
                         try el.children.append(child);
                         return &el.children.items[el.children.items.len - 1];
                     },
