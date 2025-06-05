@@ -114,6 +114,7 @@ pub fn expectEqual(expected_ast: std.ArrayList(ast.Element), actual_ast: std.Arr
 
                 try expectEqual(url.children, actual.url.children);
             },
+            .callout => unreachable,
             .inline_code => |inline_code| {
                 try std.testing.expectEqual(inline_code, actual.inline_code);
             },
