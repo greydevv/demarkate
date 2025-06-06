@@ -39,39 +39,25 @@ To escape any character (except EOF), use `\`.
 
 Directives take the following form:
 ```
-@identifier:attributes<parameters>
+@identifier:attributes(parameters)
 ```
 
-_Attributes_ are always optional and _parameters_ are enforced depending on the
-type of directive.
+_Attributes_ are always optional and _parameters_ are required. Dependning on
+the type of directive, parameters will be parsed differently.
 
 ### URLs
 ```
-@url<text; https://www.example.com>
+@url(text; https://www.example.com)
 ```
 
 ### Images
 
 ```
-@img<alt-text; https://www.example.com>
-@img<alt-text; /some/relative/path.jpg>
+@img(alt-text; https://www.example.com)
+@img(alt-text; /some/relative/path.jpg)
 ```
 If the image is decorative, omit the alt-text:
 ```
-@img<; https://www.example.com>
+@img(; https://www.example.com)
      ^ don't forget the semicolon!
-```
-
-### Block Code
-```
-@code<
-    let x = 13;
-    print(x);
->
-```
-Specify an optional language as the first attribute:
-```
-@code:zig<
-    const std = @import("std");
->
 ```
