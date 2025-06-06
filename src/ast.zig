@@ -8,7 +8,7 @@ pub const Element = union(enum) {
         children: std.ArrayList(Element),
     },
     callout: struct {
-        type: ?pos.Span,
+        style: ?pos.Span,
         children: std.ArrayList(Element),
     },
     url: struct {
