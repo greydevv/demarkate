@@ -4,50 +4,30 @@ const ast = @import("ast.zig");
 const Tokenizer = @import("Tokenizer.zig");
 
 pub const ParseError = struct {
-    tag: Tag,
-    token: Tokenizer.Token,
-
-    pub const Tag = enum {
-        unexpected_token,
-        unterminated_modifier,
-        unterminated_block_code,
-        unterminated_inline_code,
-    };
+    err: Error,
+    token: ?Tokenizer.Token,
 
     pub fn allocMsg(self: *const ParseError, allocator: std.mem.Allocator) ![]const u8 {
-        const tag = self.tag;
-        const token = self.token;
-
-        const msg = switch(tag) {
-            .unexpected_token =>
-                std.fmt.allocPrint(
-                    allocator,
-                    "Unexpected token ({s}) from {} to {}", .{
-                        @tagName(token.tag),
-                        token.span.start,
-                        token.span.end
-                    }
-                ),
-            .unterminated_modifier =>
-                std.fmt.allocPrint(
-                    allocator,
-                    "Unterminated inline modifier ({s})", .{
-                        @tagName(token.tag)
-                    }
-                ),
-            .unterminated_block_code =>
-                std.fmt.allocPrint(
-                    allocator,
-                    "Unterminated code block", .{}
-                ),
-            .unterminated_inline_code =>
-                std.fmt.allocPrint(
-                    allocator,
-                    "Unterminated inline code", .{}
-                ),
-        };
-
-        return msg;
+        if (self.token) |token| {
+            return try std.fmt.allocPrint(
+                allocator,
+                "{s} ({s}) from {} to {}",
+                .{
+                    @errorName(self.err),
+                    @tagName(token.tag),
+                    token.span.start,
+                    token.span.end
+                }
+            );
+        } else {
+            return try std.fmt.allocPrint(
+                allocator,
+                "{s}",
+                .{
+                    @errorName(self.err)
+                }
+            );
+        }
     }
 };
 
@@ -64,7 +44,14 @@ tok_i: usize,
 elements: std.ArrayList(ast.Element),
 errors: std.ArrayList(ParseError),
 
-const Error = std.mem.Allocator.Error || error{ ParseError };
+const Error = error{
+    UnexpectedToken,
+    InvalidBlockStart,
+    InvalidInlineStart,
+    TooManyAttrs,
+    UnterminatedInlineCode,
+    ParseError
+} || std.mem.Allocator.Error;
 
 pub fn init(allocator: std.mem.Allocator, tokens: []const Tokenizer.Token) Parser {
     return .{
@@ -87,48 +74,61 @@ pub fn deinit(self: *Parser) void {
     self.errors.deinit();
 }
 
+fn parseTopLevelElement(self: *Parser) !ast.Element {
+    const block = self.parseBlockElement() catch |e| {
+        if (e == Error.InvalidBlockStart) {
+            _ = self.errors.pop();
+            // good place to wrap inline content in some paragraph block?
+            return self.parseInlineElement();
+        } else {
+            return e;
+        }
+    };
+
+    return block;
+}
+
+fn parseBlockElement(self: *Parser) !ast.Element {
+    const token = self.tokens[self.tok_i];
+    return switch (token.tag) {
+        .pound => self.parseHeading(),
+        .keyword_code => self.parseBlockCode(),
+        .keyword_callout => self.parseCallout(),
+        else => self.err(Error.InvalidBlockStart, token)
+    };
+}
+
+fn parseInlineElement(self: *Parser) !ast.Element {
+    const token = self.tokens[self.tok_i];
+    return switch (token.tag) {
+        .backtick => self.parseInlineCode(),
+        .newline => self.parseLineBreak(),
+        .literal_text => self.parseLiteralText(),
+        .keyword_url => self.parseUrl(),
+        .keyword_img => self.parseImg(),
+        else => {
+            if (modifierTagOrNull(token)) |_| {
+                return self.parseInlineModifier();
+            } else {
+                return self.err(Error.InvalidInlineStart, token);
+            }
+        }
+    };
+}
+
 pub fn parse(self: *Parser) !void {
     while (self.tokens[self.tok_i].tag != .eof) {
-        const el = switch (self.tokens[self.tok_i].tag) {
-            .pound => try self.parseHeading(),
-            .newline => try self.parseLineBreak(),
-            .keyword_code,
-            .keyword_img,
-            .keyword_url,
-            .keyword_callout => try self.parseDirective(),
-            else => try self.parseInline(),
-        };
+        const el = try self.parseTopLevelElement();
         errdefer el.deinit();
-
         try self.elements.append(el);
     }
 }
 
-fn parseDirective(self: *Parser) Error!ast.Element {
-    const keyword_tag = self.eatToken().tag;
-
-    const attrs = try self.parseAttributes();
-    defer attrs.deinit();
-
-    if (self.tokens[self.tok_i].tag == .open_angle) {
-        self.skipToken();
-    } else {
-        return self.err(.unexpected_token, self.tokens[self.tok_i]);
+fn parseOptionalAttributes(self: *Parser, expected_n: u8) Error!std.ArrayList(pos.Span) {
+    if (expected_n == 0) {
+        unreachable;
     }
 
-    // TOOD: may not need union? can just assert here, e.g.
-    // switch (token.tag) { .keyword_code, .keyword_etc }.
-    // Seemingly no need for indirection.
-    return switch (keyword_tag) {
-        .keyword_code => try self.parseBlockCode(attrs),
-        .keyword_img => try self.parseImg(attrs),
-        .keyword_url => try self.parseUrl(attrs),
-        .keyword_callout => try self.parseCallout(attrs),
-        else => unreachable,
-    };
-}
-
-fn parseAttributes(self: *Parser) !std.ArrayList(pos.Span) {
     var attrs = std.ArrayList(pos.Span).init(self.allocator);
     errdefer attrs.deinit();
 
@@ -145,7 +145,7 @@ fn parseAttributes(self: *Parser) !std.ArrayList(pos.Span) {
                     break :attr;
                 },
                 .newline,
-                .eof => return self.err(.unexpected_token, token),
+                .eof => return self.err(Error.UnexpectedToken, token),
                 else => {
                     self.skipToken();
 
@@ -163,32 +163,20 @@ fn parseAttributes(self: *Parser) !std.ArrayList(pos.Span) {
         }
     }
 
+    if (attrs.items.len > expected_n) {
+        return self.err(Error.TooManyAttrs, null);
+    }
+
     return attrs;
 }
 
-fn parseCallout(self: *Parser, _: ?std.ArrayList(pos.Span)) Error!ast.Element {
-    var callout = ast.Element{
-        .callout = .{
-            .type = undefined,
-            .children = .init(self.allocator),
-        }
-    };
-    errdefer callout.deinit();
-
-    callout.callout.type = try self.eatUntilTokens(&.{ .semicolon });
+fn parseImg(self: *Parser) Error!ast.Element {
+    _ = self.assertToken(.keyword_img);
     self.skipToken();
 
-    while (self.tokens[self.tok_i].tag != .close_angle) {
-        const child = try self.parseInline();
-        _ = try callout.addChild(child);
-    }
-
+    _ = try self.expectToken(.open_angle);
     self.skipToken();
 
-    return callout;
-}
-
-fn parseImg(self: *Parser, _: ?std.ArrayList(pos.Span)) Error!ast.Element {
     var img = ast.Element{
         .img = .{
             .src = undefined,
@@ -202,15 +190,23 @@ fn parseImg(self: *Parser, _: ?std.ArrayList(pos.Span)) Error!ast.Element {
 
     if (try self.eatUntilTokens(&.{ .close_angle })) |src| {
         img.img.src = src;
-        self.skipToken();
     } else {
-        return self.err(.unexpected_token, self.tokens[self.tok_i]);
+        return self.err(Error.UnexpectedToken, self.tokens[self.tok_i]);
     }
+
+    _ = self.assertToken(.close_angle);
+    self.skipToken();
 
     return img;
 }
 
-fn parseUrl(self: *Parser, _: ?std.ArrayList(pos.Span)) Error!ast.Element {
+fn parseUrl(self: *Parser) Error!ast.Element {
+    _ = self.assertToken(.keyword_url);
+    self.skipToken();
+
+    _ = try self.expectToken(.open_angle);
+    self.skipToken();
+
     var url = ast.Element{
         .url = .{
             .children = .init(self.allocator),
@@ -220,7 +216,7 @@ fn parseUrl(self: *Parser, _: ?std.ArrayList(pos.Span)) Error!ast.Element {
     errdefer url.deinit();
 
     while (self.tokens[self.tok_i].tag != .semicolon) {
-        const child = try self.parseInline();
+        const child = try self.parseInlineElement();
         _ = try url.addChild(child);
     }
 
@@ -228,20 +224,32 @@ fn parseUrl(self: *Parser, _: ?std.ArrayList(pos.Span)) Error!ast.Element {
 
     if (try self.eatUntilTokens(&.{ .close_angle })) |href| {
         url.url.href = href;
-        self.skipToken();
     } else {
-        return self.err(.unexpected_token, self.tokens[self.tok_i]);
+        return self.err(Error.UnexpectedToken, self.tokens[self.tok_i]);
     }
+
+    _ = self.assertToken(.close_angle);
+    self.skipToken();
 
     return url;
 }
 
-fn parseBlockCode(self: *Parser, attrs: std.ArrayList(pos.Span)) Error!ast.Element {
-    const lang = if (attrs.items.len > 0) attrs.items[0] else null;
+fn parseBlockCode(self: *Parser) Error!ast.Element {
+    _ = self.assertToken(.keyword_code);
+    self.skipToken();
+
+    const attrs = try self.parseOptionalAttributes(1);
+    defer attrs.deinit();
+
+    _ = try self.expectToken(.open_angle);
+    self.skipToken();
+
+    _ = try self.expectToken(.newline);
+    self.skipToken();
 
     var code = ast.Element{
         .block_code = .{
-            .lang = lang,
+            .lang = if (attrs.items.len > 0) attrs.items[0] else null,
             .children = .init(self.allocator)
         }
     };
@@ -260,15 +268,45 @@ fn parseBlockCode(self: *Parser, attrs: std.ArrayList(pos.Span)) Error!ast.Eleme
                 const line_break = try self.parseLineBreak();
                 _ = try code.addChild(line_break);
             },
-            .close_angle => {
-                self.skipToken();
-                break;
-            },
+            .close_angle => break,
             else => unreachable,
         }
     }
 
+    _ = self.assertToken(.close_angle);
+    self.skipToken();
+
     return code;
+}
+
+fn parseCallout(self: *Parser) Error!ast.Element {
+    std.log.info("Parsing callout", .{});
+    _ = self.assertToken(.keyword_callout);
+    self.skipToken();
+
+    const attrs = try self.parseOptionalAttributes(1);
+    defer attrs.deinit();
+
+    _ = try self.expectToken(.open_angle);
+    self.skipToken();
+
+    var callout = ast.Element{
+        .callout = .{
+            .style = if (attrs.items.len > 0) attrs.items[0] else null,
+            .children = .init(self.allocator),
+        }
+    };
+    errdefer callout.deinit();
+
+    while (self.tokens[self.tok_i].tag != .close_angle) {
+        const child = try self.parseInlineElement();
+        _ = try callout.addChild(child);
+    }
+
+    _ = self.assertToken(.close_angle);
+    self.skipToken();
+
+    return callout;
 }
 
 fn eatUntilTokens(self: *Parser, comptime tags: []const Tokenizer.Token.Tag) !?pos.Span {
@@ -282,7 +320,7 @@ fn eatUntilTokens(self: *Parser, comptime tags: []const Tokenizer.Token.Tag) !?p
         }
 
         if (token.tag == .eof) {
-            return self.err(.unexpected_token, token);
+            return self.err(Error.UnexpectedToken, token);
         }
 
         if (span) |*some_span| {
@@ -298,52 +336,84 @@ fn eatUntilTokens(self: *Parser, comptime tags: []const Tokenizer.Token.Tag) !?p
 }
 
 fn parseHeading(self: *Parser) Error!ast.Element {
-    const level = self.eatToken().span.len();
+    const pound_token = self.assertToken(.pound);
+    self.skipToken();
+
     const children = try self.expectInlineUntilLineBreakOrEof();
     return ast.Element{
         .heading = .{
-            .level = level,
+            .level = pound_token.span.len(),
             .children = children
         }
     };
 }
 
 fn parseInlineCode(self: *Parser) Error!ast.Element {
-    const open_token = self.eatToken();
-    var span = self.tokens[self.tok_i].span;
+    const open_backtick = self.assertToken(.backtick);
+    self.skipToken();
+
+    var el = ast.Element{
+        .inline_code = self.tokens[self.tok_i].span
+    };
 
     while (true) {
         const token = self.tokens[self.tok_i];
+
+        if (token.tag == .newline or token.tag == .eof) {
+            return self.err(Error.UnterminatedInlineCode, open_backtick);
+        }
+
         switch (token.tag) {
             .newline,
-            .eof => return self.err(.unterminated_inline_code, open_token),
-            else => {
-                if (token.tag.equals(open_token.tag) and token.span.len() == open_token.span.len()) {
-                    self.skipToken();
-                    break;
-                }
-
-                span.end = token.span.end;
+            .eof => return self.err(Error.UnterminatedInlineCode, open_backtick),
+            .backtick => {
                 self.skipToken();
+                break;
             },
+            else => {
+                el.inline_code.end = token.span.end;
+                self.skipToken();
+            }
         }
     }
 
-    return ast.Element{
-        .inline_code = span
-    };
+    return el;
 }
 
 fn parseLineBreak(self: *Parser) Error!ast.Element {
-    const token = self.tokens[self.tok_i];
-    if (token.tag != .newline) {
-        return self.err(.unexpected_token, token);
-    }
-
-    _ = self.skipToken();
+    const token = self.assertToken(.newline);
+    self.skipToken();
     return ast.Element{
         .line_break = token.span
     };
+}
+
+fn parseLiteralText(self: *Parser) ast.Element {
+    const token = self.assertToken(.literal_text);
+    self.skipToken();
+    return ast.Element{
+        .text = token.span
+    };
+}
+
+/// Assert the tag of the current token matches `expected_tag`.
+///
+/// If it does not match, the program panics.
+fn assertToken(self: *Parser, expected_tag: Tokenizer.Token.Tag) Tokenizer.Token {
+    return self.expectToken(expected_tag) catch unreachable;
+}
+
+/// Expects the tag of the current token to match `expected_tag`.
+///
+/// If it does not match, `Error.UnexpectedToken` is returned.
+fn expectToken(self: *Parser, expected_tag: Tokenizer.Token.Tag) Error!Tokenizer.Token {
+    const token = self.tokens[self.tok_i];
+    if (token.tag != expected_tag) {
+        std.log.err("Expected {s} but got {s}", .{ @tagName(expected_tag), @tagName(token.tag) });
+        return self.err(Error.UnexpectedToken, token);
+    }
+
+    return token;
 }
 
 fn expectInlineUntilLineBreakOrEof(self: *Parser) !std.ArrayList(ast.Element) {
@@ -352,7 +422,7 @@ fn expectInlineUntilLineBreakOrEof(self: *Parser) !std.ArrayList(ast.Element) {
 
     var token = self.tokens[self.tok_i];
     while (token.tag != .newline and token.tag != .eof) {
-        const child_el = try self.parseInline();
+        const child_el = try self.parseInlineElement();
         errdefer child_el.deinit();
 
         _ = try children.append(child_el);
@@ -360,36 +430,17 @@ fn expectInlineUntilLineBreakOrEof(self: *Parser) !std.ArrayList(ast.Element) {
     }
 
     if (children.items.len == 0) {
-        return self.err(.unexpected_token, token);
+        return self.err(Error.UnexpectedToken, token);
     }
 
     return children;
-}
-
-fn parseInline(self: *Parser) Error!ast.Element {
-    const token = self.tokens[self.tok_i];
-    if (modifierTagOrNull(token)) |_| {
-        return self.parseInlineModifier();
-    }
-
-    return switch (token.tag) {
-        .eof => self.err(.unexpected_token, token),
-        .backtick => self.parseInlineCode(),
-        .keyword_code,
-        .keyword_img,
-        .keyword_url,
-        .keyword_callout => self.parseDirective(),
-        else => ast.Element{
-            .text = self.eatToken().span
-        },
-    };
 }
 
 fn parseInlineModifier(self: *Parser) Error!ast.Element {
     var outer_most_modifier = ast.Element{
         .modifier = .{
             .children = .init(self.allocator),
-            .tag = modifierTag(self.eatToken())
+            .tag = modifierTagOrNull(self.eatToken()) orelse unreachable
         }
     };
     errdefer outer_most_modifier.deinit();
@@ -422,16 +473,12 @@ fn parseInlineModifier(self: *Parser) Error!ast.Element {
 
             self.skipToken();
         } else {
-            const child_el = try self.parseInline();
+            const child_el = try self.parseInlineElement();
             _ = try el_stack.getLast().addChild(child_el);
         }
     }
 
     return outer_most_modifier;
-}
-
-fn modifierTag(token: Tokenizer.Token) ast.Element.Modifier.Tag {
-    return modifierTagOrNull(token) orelse unreachable;
 }
 
 fn modifierTagOrNull(token: Tokenizer.Token) ?ast.Element.Modifier.Tag {
@@ -463,15 +510,15 @@ fn eatToken(self: *Parser) Tokenizer.Token {
 
 fn err(
     self: *Parser,
-    tag: ParseError.Tag,
-    token: Tokenizer.Token
+    e: Error,
+    token: ?Tokenizer.Token
 ) Error {
     try self.errors.append(.{
-        .tag = tag,
+        .err = e,
         .token = token,
     });
 
-    return error.ParseError;
+    return e;
 }
 
 test "fails on unterminated inline code" {
@@ -484,7 +531,7 @@ test "fails on unterminated inline code" {
 
     try expectError(
         tokens,
-        .unterminated_inline_code,
+        Error.UntermiantedInlineCode,
         tokens[0],
     );
 }
