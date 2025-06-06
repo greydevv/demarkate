@@ -35,29 +35,6 @@ not the goal of this project.
 
 To escape any character (except EOF), use `\`.
 
-### Directives
+### WIP
 
-Directives take the following form:
-```
-@identifier:attributes(parameters)
-```
-
-_Attributes_ are always optional and _parameters_ are required. Dependning on
-the type of directive, parameters will be parsed differently.
-
-### URLs
-```
-@url(text; https://www.example.com)
-```
-
-### Images
-
-```
-@img(alt-text; https://www.example.com)
-@img(alt-text; /some/relative/path.jpg)
-```
-If the image is decorative, omit the alt-text:
-```
-@img(; https://www.example.com)
-     ^ don't forget the semicolon!
-```
+Hoping to get some examples up here soon.
