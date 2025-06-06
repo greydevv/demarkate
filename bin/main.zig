@@ -98,6 +98,8 @@ fn printAst(allocator: std.mem.Allocator, el: *const dmk.ast.Element, depth: u32
         },
         .url => |node| {
             std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
+            std.debug.print("  - {s}'{s}'\n", .{ indent, node.href.slice(tokenizer.buffer) });
+
             for (node.children.items) |child| {
                 try printAst(allocator, &child, depth + 1, tokenizer);
             }
@@ -106,15 +108,18 @@ fn printAst(allocator: std.mem.Allocator, el: *const dmk.ast.Element, depth: u32
             std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
 
             if (node.alt_text) |alt_text| {
-                std.debug.print("    {s}alt={s}\n", .{ indent, alt_text.slice(tokenizer.buffer) });
+                std.debug.print("  - {s}'{s}'\n", .{ indent, alt_text.slice(tokenizer.buffer) });
             }
+
+            std.debug.print("  - {s}'{s}'\n", .{ indent, node.src.slice(tokenizer.buffer) });
         },
         .block_code => |node| {
             std.debug.print("{s}- {s}", .{ indent, @tagName(el.*) });
-            
             if (node.lang) |lang| {
                 std.debug.print("({s})", .{ lang.slice(tokenizer.buffer) });
             }
+
+            std.debug.print("\n", .{});
 
             for (node.children.items) |child| {
                 try printAst(allocator, &child, depth + 1, tokenizer);
