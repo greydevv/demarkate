@@ -2,7 +2,7 @@ const std = @import("std");
 const pos = @import("../pos.zig");
 const ast = @import("../ast.zig");
 
-pub const Error = error{OutOfMemory};
+pub const Error = error{ OutOfMemory, NoSpaceLeft };
 
 const Attr = std.meta.Tuple(&.{ []const u8, []const u8 });
 
@@ -25,7 +25,7 @@ pub const Renderer = struct {
 
     pub fn render(self: *Renderer, elements: []const ast.Element) Error!void {
         try self.openTagWithAttrs("div", &.{
-            .{ "class", "markdown" }
+            .{ "class", "dmk_document" }
         });
 
         for (elements) |el| {
@@ -48,8 +48,24 @@ pub const Renderer = struct {
                 try self.closeTag("h1");
             },
             .callout => |callout| {
+                var class: []const u8 = undefined;
+                if (callout.style) |span| {
+                    class = try std.fmt.allocPrint(
+                        self.allocator,
+                        "dmk_callout_{s}",
+                        .{ span.slice(self.source) }
+                    );
+                } else {
+                    class = try std.fmt.allocPrint(
+                        self.allocator,
+                        "dmk_callout",
+                        .{}
+                    );
+                }
+                defer self.allocator.free(class);
+
                 try self.openTagWithAttrs("div", &.{
-                    .{ "class", "dmk-callout" }
+                    .{ "class", class }
                 });
 
                 for (callout.children.items) |child| {
