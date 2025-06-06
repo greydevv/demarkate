@@ -3,11 +3,11 @@ const pos = @import("pos.zig");
 const ast = @import("ast.zig");
 const Tokenizer = @import("Tokenizer.zig");
 
-pub const ParseError = struct {
+pub const ErrorPayload = struct {
     err: Error,
     token: ?Tokenizer.Token,
 
-    pub fn allocMsg(self: *const ParseError, allocator: std.mem.Allocator) ![]const u8 {
+    pub fn allocMsg(self: *const ErrorPayload, allocator: std.mem.Allocator) ![]const u8 {
         if (self.token) |token| {
             return try std.fmt.allocPrint(
                 allocator,
@@ -31,18 +31,13 @@ pub const ParseError = struct {
     }
 };
 
-const Context = enum {
-    @"inline",
-    block
-};
-
 const Parser = @This();
 
 allocator: std.mem.Allocator,
 tokens: []const Tokenizer.Token,
 tok_i: usize,
 elements: std.ArrayList(ast.Element),
-errors: std.ArrayList(ParseError),
+errors: std.ArrayList(ErrorPayload),
 
 const Error = error{
     UnexpectedToken,
@@ -690,7 +685,7 @@ const AstBuilder = ast_builder.AstBuilder;
 
 fn expectError(
     source: []const Tokenizer.Token,
-    expected_err: ParseError.Tag,
+    expected_err: Error,
     expected_token: Tokenizer.Token
 ) !void {
     var parser = Parser.init(
