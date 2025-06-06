@@ -137,11 +137,11 @@ fn nextStructural(self: *Tokenizer) ?Token {
                 token.tag = .literal_text;
             }
         },
-        '<' => {
+        '(' => {
             token.tag = .open_angle;
             self.index += 1;
         },
-        '>' => {
+        ')' => {
             token.tag = .close_angle;
             self.index += 1;
         },
@@ -207,9 +207,9 @@ test "tokenizes text-only source" {
 
 test "tokenizes escape character after structural token" {
     const source = source_builder
-        .tok(.open_angle, "<")
+        .tok(.open_angle, "(")
         .tok(.literal_text, "\\>")
-        .tok(.close_angle, ">")
+        .tok(.close_angle, ")")
         .eof();
     defer source.deinit();
 
@@ -236,9 +236,9 @@ test "tokenizes escape character at eof" {
 
 test "tokenizes literal text between structural tokens" {
     const source = source_builder
-        .tok(.open_angle, "<")
+        .tok(.open_angle, "(")
         .tok(.literal_text, "hello, world")
-        .tok(.close_angle, ">")
+        .tok(.close_angle, ")")
         .eof();
     defer source.deinit();
 
