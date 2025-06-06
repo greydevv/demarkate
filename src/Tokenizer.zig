@@ -109,9 +109,7 @@ fn nextStructural(self: *Tokenizer) ?Token {
         },
         '`' => {
             token.tag = .backtick;
-            while (self.buffer[self.index] == '`') {
-                self.index += 1;
-            }
+            self.index += 1;
         },
         '\n' => {
             token.tag = .newline;
