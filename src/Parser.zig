@@ -46,6 +46,7 @@ const Error = error{
     TooManyAttrs,
     UnterminatedInlineCode,
     UnterminatedInlineModifier,
+    UnindentedCode,
     ParseError
 } || std.mem.Allocator.Error;
 
@@ -260,6 +261,13 @@ fn parseBlockCode(self: *Parser) Error!ast.Element {
     errdefer code.deinit();
 
     while (true) {
+        switch (self.tokens[self.tok_i].tag) {
+            .close_angle => break,
+            .newline => {},
+            .tab => self.skipToken(),
+            else => return self.err(Error.UnindentedCode, self.tokens[self.tok_i])
+        }
+
         const span = try self.eatUntilTokens(&.{ .newline });
         if (span) |some_span| {
             _ = try code.addChild(ast.Element{
@@ -267,17 +275,8 @@ fn parseBlockCode(self: *Parser) Error!ast.Element {
             });
         }
 
-
         const line_break = try self.parseLineBreak();
         _ = try code.addChild(line_break);
-
-        std.log.info("Token: {s}", .{ @tagName(self.tokens[self.tok_i].tag) });
-
-        switch (self.tokens[self.tok_i].tag) {
-            .close_angle => break,
-            .tab => self.skipToken(),
-            else => return self.err(Error.UnexpectedToken, self.tokens[self.tok_i])
-        }
     }
 
     _ = self.assertToken(.close_angle);
