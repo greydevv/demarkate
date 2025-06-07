@@ -30,21 +30,6 @@ fn formatElement(self: *const Formatter, el: *ast.Element) Error!void {
                 }
             }
         },
-        .block_code => |*block_code| {
-            for (block_code.children.items) |*child| {
-                switch (child.*) {
-                    .code_literal => |*span| {
-                        if (std.mem.startsWith(u8, span.slice(self.source), " " ** 4)) {
-                            span.start += 4;
-                        } else {
-                            return error.FormatError;
-                        }
-                    },
-                    .line_break => continue,
-                    else => unreachable,
-                }
-            }
-        },
         .url => |*url| {
             self.stripSurroundingWhitespace(&url.href);
         },
