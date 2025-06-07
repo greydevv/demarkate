@@ -190,10 +190,10 @@ fn parseImg(self: *Parser) Error!ast.Element {
     };
     errdefer img.deinit();
 
-    img.img.alt_text = try self.eatUntilTokens(&.{ .semicolon });
+    img.img.alt_text = try self.eatUntilToken(.semicolon);
     self.skipToken();
 
-    if (try self.eatUntilTokens(&.{ .close_angle })) |src| {
+    if (try self.eatUntilToken(.close_angle)) |src| {
         img.img.src = src;
     } else {
         return self.err(Error.UnexpectedToken, self.tokens[self.tok_i]);
@@ -227,7 +227,7 @@ fn parseUrl(self: *Parser) Error!ast.Element {
 
     self.skipToken();
 
-    if (try self.eatUntilTokens(&.{ .close_angle })) |href| {
+    if (try self.eatUntilToken(.close_angle)) |href| {
         url.url.href = href;
     } else {
         return self.err(Error.UnexpectedToken, self.tokens[self.tok_i]);
@@ -268,8 +268,7 @@ fn parseBlockCode(self: *Parser) Error!ast.Element {
             else => return self.err(Error.UnindentedCode, self.tokens[self.tok_i])
         }
 
-        const span = try self.eatUntilTokens(&.{ .newline });
-        if (span) |some_span| {
+        if (try self.eatUntilToken(.newline)) |some_span| {
             _ = try code.addChild(ast.Element{
                 .code_literal = some_span
             });
@@ -313,6 +312,10 @@ fn parseCallout(self: *Parser) Error!ast.Element {
     self.skipToken();
 
     return callout;
+}
+
+fn eatUntilToken(self: *Parser, comptime tag: Tokenizer.Token.Tag) !?pos.Span {
+    return self.eatUntilTokens(&.{ tag });
 }
 
 fn eatUntilTokens(self: *Parser, comptime tags: []const Tokenizer.Token.Tag) !?pos.Span {
