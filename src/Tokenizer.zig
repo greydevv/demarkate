@@ -29,6 +29,7 @@ pub const Token = struct {
         keyword_url,
         keyword_img,
         keyword_callout,
+        tab,
         unknown,
         eof,
 
@@ -144,6 +145,18 @@ fn nextStructural(self: *Tokenizer) ?Token {
         ')' => {
             token.tag = .close_angle;
             self.index += 1;
+        },
+        ' ' => {
+            if (self.buffer.len - self.index > 4) {
+                if (std.mem.eql(u8, self.buffer[self.index..self.index + 4], " " ** 4)) {
+                    token.tag = .tab;
+                    self.index += 4;
+                } else {
+                    return null;
+                }
+            } else {
+                return null;
+            }
         },
         else => return null
     }

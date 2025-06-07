@@ -116,6 +116,7 @@ fn parseInlineElement(self: *Parser) !ast.Element {
         .literal_text => self.parseLiteralText(),
         .keyword_url => self.parseUrl(),
         .keyword_img => self.parseImg(),
+        .tab,
         .pound => self.parseGreedilyAsLiteralText(),
         else => {
             if (modifierTagOrNull(token)) |_| {
@@ -259,20 +260,23 @@ fn parseBlockCode(self: *Parser) Error!ast.Element {
     errdefer code.deinit();
 
     while (true) {
-        const span = try self.eatUntilTokens(&.{ .newline, .close_angle });
+        const span = try self.eatUntilTokens(&.{ .newline });
         if (span) |some_span| {
             _ = try code.addChild(ast.Element{
                 .code_literal = some_span
             });
         }
 
+
+        const line_break = try self.parseLineBreak();
+        _ = try code.addChild(line_break);
+
+        std.log.info("Token: {s}", .{ @tagName(self.tokens[self.tok_i].tag) });
+
         switch (self.tokens[self.tok_i].tag) {
-            .newline => {
-                const line_break = try self.parseLineBreak();
-                _ = try code.addChild(line_break);
-            },
             .close_angle => break,
-            else => unreachable,
+            .tab => self.skipToken(),
+            else => return self.err(Error.UnexpectedToken, self.tokens[self.tok_i])
         }
     }
 
