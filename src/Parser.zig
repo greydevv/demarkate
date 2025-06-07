@@ -45,6 +45,7 @@ const Error = error{
     InvalidInlineStart,
     TooManyAttrs,
     UnterminatedInlineCode,
+    UnterminatedInlineModifier,
     ParseError
 } || std.mem.Allocator.Error;
 
@@ -69,7 +70,21 @@ pub fn deinit(self: *Parser) void {
     self.errors.deinit();
 }
 
+pub fn parse(self: *Parser) !void {
+    while (self.tokens[self.tok_i].tag != .eof) {
+        const el = try self.parseTopLevelElement();
+        errdefer el.deinit();
+        try self.elements.append(el);
+    }
+}
+
+
 fn parseTopLevelElement(self: *Parser) !ast.Element {
+    if (self.tok_i > 0 and self.tokens[self.tok_i - 1].tag != .newline) {
+        // block elements must start on newline
+        return self.parseInlineElement();
+    }
+
     const block = self.parseBlockElement() catch |e| {
         if (e == Error.InvalidBlockStart) {
             _ = self.errors.pop();
@@ -101,6 +116,7 @@ fn parseInlineElement(self: *Parser) !ast.Element {
         .literal_text => self.parseLiteralText(),
         .keyword_url => self.parseUrl(),
         .keyword_img => self.parseImg(),
+        .pound => self.parseGreedilyAsLiteralText(),
         else => {
             if (modifierTagOrNull(token)) |_| {
                 return self.parseInlineModifier();
@@ -109,14 +125,6 @@ fn parseInlineElement(self: *Parser) !ast.Element {
             }
         }
     };
-}
-
-pub fn parse(self: *Parser) !void {
-    while (self.tokens[self.tok_i].tag != .eof) {
-        const el = try self.parseTopLevelElement();
-        errdefer el.deinit();
-        try self.elements.append(el);
-    }
 }
 
 fn parseOptionalAttributes(self: *Parser, expected_n: u8) Error!std.ArrayList(pos.Span) {
@@ -383,6 +391,17 @@ fn parseLineBreak(self: *Parser) Error!ast.Element {
     };
 }
 
+fn parseGreedilyAsLiteralText(self: *Parser) ast.Element {
+    if (self.tokens[self.tok_i].tag == .eof) {
+        unreachable;
+    }
+
+    const token = self.eatToken();
+    return ast.Element {
+        .text = token.span
+    };
+}
+
 fn parseLiteralText(self: *Parser) ast.Element {
     const token = self.assertToken(.literal_text);
     self.skipToken();
@@ -432,26 +451,33 @@ fn expectInlineUntilLineBreakOrEof(self: *Parser) !std.ArrayList(ast.Element) {
 }
 
 fn parseInlineModifier(self: *Parser) Error!ast.Element {
+    var open_modifier_token = self.eatToken();
+
     var outer_most_modifier = ast.Element{
         .modifier = .{
             .children = .init(self.allocator),
-            .tag = modifierTagOrNull(self.eatToken()) orelse unreachable
+            .tag = modifierTagOrNull(open_modifier_token) orelse unreachable
         }
     };
     errdefer outer_most_modifier.deinit();
 
-    var el_stack = std.ArrayList(*ast.Element).init(self.allocator);
-    defer el_stack.deinit();
+    var modifier_el_stack = std.ArrayList(*ast.Element).init(self.allocator);
+    defer modifier_el_stack.deinit();
 
-    try el_stack.append(&outer_most_modifier);
+    try modifier_el_stack.append(&outer_most_modifier);
 
-    while (el_stack.items.len > 0) {
+    while (modifier_el_stack.items.len > 0) {
         const token = self.tokens[self.tok_i];
 
+        if (token.tag == .eof) {
+            // TODO: get open token here
+            return self.err(Error.UnterminatedInlineModifier, open_modifier_token);
+        }
+
         if (modifierTagOrNull(token)) |modifier_tag| {
-            if (el_stack.getLast().modifier.tag == modifier_tag) {
+            if (modifier_el_stack.getLast().modifier.tag == modifier_tag) {
                 // modifier CLOSED, pop from stack
-                _ = el_stack.pop();
+                _ = modifier_el_stack.pop();
             } else {
                 // modifier OPENED, push it to stack
                 const el = ast.Element{
@@ -461,15 +487,16 @@ fn parseInlineModifier(self: *Parser) Error!ast.Element {
                     }
                 };
 
-                const old_top = el_stack.getLast();
+                const old_top = modifier_el_stack.getLast();
                 _ = try old_top.addChild(el);
-                try el_stack.append(old_top.lastChild());
+                try modifier_el_stack.append(old_top.lastChild());
+                open_modifier_token = token;
             }
 
             self.skipToken();
         } else {
             const child_el = try self.parseInlineElement();
-            _ = try el_stack.getLast().addChild(child_el);
+            _ = try modifier_el_stack.getLast().addChild(child_el);
         }
     }
 
@@ -526,7 +553,7 @@ test "fails on unterminated inline code" {
 
     try expectError(
         tokens,
-        Error.UntermiantedInlineCode,
+        Error.UnterminatedInlineCode,
         tokens[0],
     );
 }
@@ -541,8 +568,8 @@ test "fails on unterminated modifier at eof" {
 
     try expectError(
         tokens,
-        .unexpected_token,
-        tokens[1]
+        Error.UnterminatedInlineModifier,
+        tokens[0]
     );
 }
 
@@ -550,7 +577,6 @@ test "fails on unterminated nested modifier" {
     const source = source_builder
         .tok(.asterisk, "*")
         .tok(.underscore, "_")
-        .tok(.asterisk, "*")
         .eof();
     defer source.deinit();
 
@@ -558,8 +584,8 @@ test "fails on unterminated nested modifier" {
     
     try expectError(
         tokens,
-        .unexpected_token,
-        tokens[3],
+        Error.UnterminatedInlineModifier,
+        tokens[1],
     );
 }
 
@@ -695,9 +721,9 @@ fn expectError(
     defer parser.deinit();
 
     const result = parser.parse();
-    try std.testing.expectError(error.ParseError, result);
+    try std.testing.expectError(expected_err, result);
 
     const e = parser.errors.items[0];
-    try std.testing.expectEqual(e.tag, expected_err);
-    try std.testing.expectEqual(e.token, expected_token);
+    try std.testing.expectEqual(expected_err, e.err);
+    try std.testing.expectEqual(expected_token, e.token);
 }
