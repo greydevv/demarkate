@@ -8,43 +8,19 @@ pub fn main() !void {
     defer { _ = gpa.deinit(); }
     const allocator = gpa.allocator();
 
-    const buffer = try readFileAlloc(allocator, sample_file_path);
-    defer allocator.free(buffer);
+    const source = try readFileAlloc(allocator, sample_file_path);
+    defer allocator.free(source);
 
-    std.log.info("Read {} bytes into buffer", .{ buffer.len });
+    const document = try dmk.parseBytes(allocator, source);
+    defer document.deinit();
 
-    var tokenizer = dmk.Tokenizer.init(buffer[0..:0]);
-    var tokens = std.ArrayList(dmk.Tokenizer.Token).init(allocator);
-    defer tokens.deinit();
-
-    while(true) {
-        const token = tokenizer.next();
-        try tokens.append(token);
-        if (token.tag == .eof) break;
+    for (document.elements) |el| {
+        try printAst(allocator, &el, 0, source);
     }
 
-    var parser = dmk.Parser.init(allocator, tokens.items);
-    defer parser.deinit();
-    parser.parse() catch {
-        for (parser.errors.items) |e| {
-            const msg = try e.allocMsg(allocator);
-            std.log.err("{s}", .{ msg });
-            allocator.free(msg);
-        }
-
-        return;
-    };
-
-    const formatter = dmk.Formatter.init(tokenizer.buffer);
-    try formatter.format(parser.elements.items);
-
-    for (parser.elements.items) |el| {
-        try printAst(allocator, &el, 0, &tokenizer);
-    }
-
-    var renderer = dmk.HtmlRenderer.init(allocator, buffer[0..:0]);
+    var renderer = dmk.HtmlRenderer.init(allocator, source);
     defer renderer.deinit();
-    try renderer.render(parser.elements.items);
+    try renderer.render(document.elements);
 
     std.debug.print("{s}\n", .{ renderer.buffer.items });
 }
@@ -63,7 +39,7 @@ fn readFileAlloc(allocator: std.mem.Allocator, file_path: []const u8) ![:0]u8 {
     );
 }
 
-fn printAst(allocator: std.mem.Allocator, el: *const dmk.ast.Element, depth: u32, tokenizer: *const dmk.Tokenizer) !void {
+fn printAst(allocator: std.mem.Allocator, el: *const dmk.ast.Element, depth: u32, source: [:0]const u8) !void {
     const indent = try allocator.alloc(u8, depth * 2);
     defer allocator.free(indent);
     @memset(indent, ' ');
@@ -78,7 +54,7 @@ fn printAst(allocator: std.mem.Allocator, el: *const dmk.ast.Element, depth: u32
             });
             std.debug.print("  {s}  '{s}'\n", .{
                 indent,
-                span.slice(tokenizer.buffer)
+                span.slice(source)
             });
         },
         .line_break => {
@@ -87,48 +63,48 @@ fn printAst(allocator: std.mem.Allocator, el: *const dmk.ast.Element, depth: u32
         .heading => |node| {
             std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
             for (node.children.items) |child| {
-                try printAst(allocator, &child, depth + 1, tokenizer);
+                try printAst(allocator, &child, depth + 1, source);
             }
         },
         .callout => |node| {
             std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
             for (node.children.items) |child| {
-                try printAst(allocator, &child, depth + 1, tokenizer);
+                try printAst(allocator, &child, depth + 1, source);
             }
         },
         .url => |node| {
             std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
-            std.debug.print("  - {s}'{s}'\n", .{ indent, node.href.slice(tokenizer.buffer) });
+            std.debug.print("  - {s}'{s}'\n", .{ indent, node.href.slice(source) });
 
             for (node.children.items) |child| {
-                try printAst(allocator, &child, depth + 1, tokenizer);
+                try printAst(allocator, &child, depth + 1, source);
             }
         },
         .img => |node| {
             std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
 
             if (node.alt_text) |alt_text| {
-                std.debug.print("  - {s}'{s}'\n", .{ indent, alt_text.slice(tokenizer.buffer) });
+                std.debug.print("  - {s}'{s}'\n", .{ indent, alt_text.slice(source) });
             }
 
-            std.debug.print("  - {s}'{s}'\n", .{ indent, node.src.slice(tokenizer.buffer) });
+            std.debug.print("  - {s}'{s}'\n", .{ indent, node.src.slice(source) });
         },
         .block_code => |node| {
             std.debug.print("{s}- {s}", .{ indent, @tagName(el.*) });
             if (node.lang) |lang| {
-                std.debug.print("({s})", .{ lang.slice(tokenizer.buffer) });
+                std.debug.print("({s})", .{ lang.slice(source) });
             }
 
             std.debug.print("\n", .{});
 
             for (node.children.items) |child| {
-                try printAst(allocator, &child, depth + 1, tokenizer);
+                try printAst(allocator, &child, depth + 1, source);
             }
         },
         .modifier => |node| {
             std.debug.print("{s}- {s}({s})\n", .{ indent, @tagName(el.*), @tagName(node.tag) });
             for (node.children.items) |child| {
-                try printAst(allocator, &child, depth + 1, tokenizer);
+                try printAst(allocator, &child, depth + 1, source);
             }
         }
     }
