@@ -285,7 +285,6 @@ fn parseBlockCode(self: *Parser) Error!ast.Element {
 }
 
 fn parseCallout(self: *Parser) Error!ast.Element {
-    std.log.info("Parsing callout", .{});
     _ = self.assertToken(.keyword_callout);
     self.skipToken();
 
