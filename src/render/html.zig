@@ -137,7 +137,6 @@ pub const Renderer = struct {
                 try self.closeTag("code");
             },
             .img => |img| {
-
                 var alt: []const u8 = "";
                 if (img.alt_text) |span| {
                     alt = span.slice(self.source);
