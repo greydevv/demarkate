@@ -29,7 +29,7 @@ pub fn parseBytes(allocator: std.mem.Allocator, source: [:0]const u8) !Document 
     var tokens = std.ArrayList(Tokenizer.Token).init(allocator);
     defer tokens.deinit();
 
-    while(true) {
+    while (true) {
         const token = tokenizer.next();
         try tokens.append(token);
         if (token.tag == .eof) break;
