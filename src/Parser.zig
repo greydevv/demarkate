@@ -79,7 +79,10 @@ pub fn parse(self: *Parser) !void {
     }
 }
 
-
+/// Parse either a block or inline element.
+///
+/// Attempts to parse a block element first. If a block element could not be
+/// parsed, it will fall back to parsing an inline element.
 fn parseTopLevelElement(self: *Parser) !ast.Element {
     if (self.tok_i > 0 and self.tokens[self.tok_i - 1].tag != .newline) {
         // block elements must start on newline
@@ -89,7 +92,6 @@ fn parseTopLevelElement(self: *Parser) !ast.Element {
     const block = self.parseBlockElement() catch |e| {
         if (e == Error.InvalidBlockStart) {
             _ = self.errors.pop();
-            // good place to wrap inline content in some paragraph block?
             return self.parseInlineElement();
         } else {
             return e;
@@ -129,6 +131,8 @@ fn parseInlineElement(self: *Parser) !ast.Element {
     };
 }
 
+/// Parses a colon-separated list of attributes appearing in instances of
+/// directives such as block code.
 fn parseOptionalAttributes(self: *Parser, expected_n: u8) Error!std.ArrayList(pos.Span) {
     if (expected_n == 0) {
         unreachable;
@@ -190,10 +194,10 @@ fn parseImg(self: *Parser) Error!ast.Element {
     };
     errdefer img.deinit();
 
-    img.img.alt_text = try self.eatUntilToken(.semicolon);
+    img.img.alt_text = try self.spanToNextToken(.semicolon);
     self.skipToken();
 
-    if (try self.eatUntilToken(.close_angle)) |src| {
+    if (try self.spanToNextToken(.close_angle)) |src| {
         img.img.src = src;
     } else {
         return self.err(Error.UnexpectedToken, self.tokens[self.tok_i]);
@@ -227,7 +231,7 @@ fn parseUrl(self: *Parser) Error!ast.Element {
 
     self.skipToken();
 
-    if (try self.eatUntilToken(.close_angle)) |href| {
+    if (try self.spanToNextToken(.close_angle)) |href| {
         url.url.href = href;
     } else {
         return self.err(Error.UnexpectedToken, self.tokens[self.tok_i]);
@@ -268,7 +272,7 @@ fn parseBlockCode(self: *Parser) Error!ast.Element {
             else => return self.err(Error.UnindentedCode, self.tokens[self.tok_i])
         }
 
-        if (try self.eatUntilToken(.newline)) |some_span| {
+        if (try self.spanToNextToken(.newline)) |some_span| {
             _ = try code.addChild(ast.Element{
                 .code_literal = some_span
             });
@@ -311,36 +315,6 @@ fn parseCallout(self: *Parser) Error!ast.Element {
     self.skipToken();
 
     return callout;
-}
-
-fn eatUntilToken(self: *Parser, comptime tag: Tokenizer.Token.Tag) !?pos.Span {
-    return self.eatUntilTokens(&.{ tag });
-}
-
-fn eatUntilTokens(self: *Parser, comptime tags: []const Tokenizer.Token.Tag) !?pos.Span {
-    var span: ?pos.Span = null;
-    blk: while (true) {
-        const token = self.tokens[self.tok_i];
-        inline for (tags) |stop_tag| {
-            if (token.tag.equals(stop_tag)) {
-                break :blk;
-            }
-        }
-
-        if (token.tag == .eof) {
-            return self.err(Error.UnexpectedToken, token);
-        }
-
-        if (span) |*some_span| {
-            some_span.end = token.span.end;
-        } else {
-            span = token.span;
-        }
-
-        self.skipToken();
-    }
-
-    return span;
 }
 
 fn parseHeading(self: *Parser) Error!ast.Element {
@@ -396,6 +370,15 @@ fn parseLineBreak(self: *Parser) Error!ast.Element {
     };
 }
 
+fn parseLiteralText(self: *Parser) ast.Element {
+    const token = self.assertToken(.literal_text);
+    self.skipToken();
+    return ast.Element{
+        .text = token.span
+    };
+}
+
+/// Parse anything other than EOF as literal text.
 fn parseGreedilyAsLiteralText(self: *Parser) ast.Element {
     if (self.tokens[self.tok_i].tag == .eof) {
         unreachable;
@@ -407,12 +390,34 @@ fn parseGreedilyAsLiteralText(self: *Parser) ast.Element {
     };
 }
 
-fn parseLiteralText(self: *Parser) ast.Element {
-    const token = self.assertToken(.literal_text);
-    self.skipToken();
-    return ast.Element{
-        .text = token.span
-    };
+fn spanToNextToken(self: *Parser, comptime tag: Tokenizer.Token.Tag) !?pos.Span {
+    return self.spanToNextTokens(&.{ tag });
+}
+
+fn spanToNextTokens(self: *Parser, comptime tags: []const Tokenizer.Token.Tag) !?pos.Span {
+    var span: ?pos.Span = null;
+    blk: while (true) {
+        const token = self.tokens[self.tok_i];
+        inline for (tags) |stop_tag| {
+            if (token.tag.equals(stop_tag)) {
+                break :blk;
+            }
+        }
+
+        if (token.tag == .eof) {
+            return self.err(Error.UnexpectedToken, token);
+        }
+
+        if (span) |*some_span| {
+            some_span.end = token.span.end;
+        } else {
+            span = token.span;
+        }
+
+        self.skipToken();
+    }
+
+    return span;
 }
 
 /// Assert the tag of the current token matches `expected_tag`.
