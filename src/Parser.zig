@@ -47,6 +47,7 @@ const Error = error{
     UnterminatedInlineCode,
     UnterminatedInlineModifier,
     UnindentedCode,
+    UnsupportedHeadingSize,
     ParseError
 } || std.mem.Allocator.Error;
 
@@ -321,10 +322,14 @@ fn parseHeading(self: *Parser) Error!ast.Element {
     const pound_token = self.assertToken(.pound);
     self.skipToken();
 
+    if (pound_token.span.len() > 6) {
+        return self.err(Error.UnsupportedHeadingSize, pound_token);
+    }
+
     const children = try self.expectInlineUntilLineBreakOrEof();
     return ast.Element{
         .heading = .{
-            .level = pound_token.span.len(),
+            .level = @intCast(pound_token.span.len()),
             .children = children
         }
     };
