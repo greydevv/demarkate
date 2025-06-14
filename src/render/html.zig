@@ -38,9 +38,10 @@ pub const Renderer = struct {
     fn renderElement(self: *Renderer, el: ast.Element) Error!void {
         return switch (el) {
             .heading => |h| {
-                // TODO: just h1 for now
-                try self.openTag("h1");
+                const tag: [2]u8 = undefined;
+                _ = try std.fmt.bufPrint(&tag, "h{}", .{ h.level });
 
+                try self.openTag(tag);
                 for (h.children.items) |child| {
                     try self.renderElement(child);
                 }
