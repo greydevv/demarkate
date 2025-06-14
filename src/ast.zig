@@ -4,7 +4,7 @@ const Tokenizer = @import("Tokenizer.zig");
 
 pub const Element = union(enum) {
     heading: struct {
-        level: usize,
+        level: u8,
         children: std.ArrayList(Element),
     },
     callout: struct {
