@@ -42,6 +42,7 @@ pub const Renderer = struct {
                 _ = try std.fmt.bufPrint(&tag, "h{}", .{ h.level });
 
                 try self.openTag(tag);
+
                 for (h.children.items) |child| {
                     try self.renderElement(child);
                 }
@@ -165,38 +166,45 @@ pub const Renderer = struct {
         };
     }
 
-    fn openTag(self: *Renderer, comptime tag: []const u8) Error!void {
+    fn openTag(self: *Renderer, tag: []const u8) Error!void {
         return self.openTagWithAttrs(tag, &.{});
     }
 
     fn openTagWithAttrs(
         self: *Renderer,
-        comptime tag: []const u8,
+        tag: []const u8,
         attrs: []const Attr
     ) Error!void {
-        const tag_prefix = comptime std.fmt.comptimePrint("<{s}", .{ tag });
-        try self.buffer.appendSlice(tag_prefix);
+        try self.buffer.append('<');
 
-        var i: usize = 0;
+        try self.buffer.appendSlice(tag);
+
         for (attrs) |attr| {
             const html_attr = try std.fmt.allocPrint(
                 self.allocator,
                 " {s}=\"{s}\"",
                 .{ attr[0], attr[1] }
             );
+            defer self.allocator.free(html_attr);
 
             try self.buffer.appendSlice(html_attr);
-            self.allocator.free(html_attr);
-
-            i += 1;
         }
 
-        try self.buffer.appendSlice(">");
+        try self.buffer.append('>');
     }
 
-    fn closeTag(self: *Renderer, comptime tag: []const u8) !void {
-        const tag_close = comptime std.fmt.comptimePrint("</{s}>", .{ tag });
-        try self.buffer.appendSlice(tag_close);
+    fn closeTag(self: *Renderer, tag: []const u8) !void {
+        const fmt = "</{s}>";
+
+        var buf: [16]u8 = undefined;
+        _ = std.fmt.bufPrint(&buf, fmt, .{ tag }) catch {
+            const tag_close = try std.fmt.allocPrint(self.allocator, fmt, .{ tag });
+            defer self.allocator.free(tag);
+            try self.buffer.appendSlice(tag_close);
+            return;
+        };
+
+        try self.buffer.appendSlice(&buf);
     }
 
     fn appendSpan(self: *Renderer, span: pos.Span) !void {
