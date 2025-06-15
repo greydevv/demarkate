@@ -106,6 +106,7 @@ fn printAst(allocator: std.mem.Allocator, el: *const dmk.ast.Element, depth: u32
             for (node.children.items) |child| {
                 try printAst(allocator, &child, depth + 1, source);
             }
-        }
+        },
+        .noop => {},
     }
 }
