@@ -10,34 +10,41 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const lib = b.addLibrary(.{
-        .linkage = .static,
-        .name = "demarkate",
-        .root_module = demarkate,
-    });
+    // (Optionally) building for wasm32-freestanding
+    const compile_to_wasm = b.option(bool, "wasm", "target wasm32-freestanding") orelse false;
+    {
+        if (compile_to_wasm) {
+            const wasm_shim_mod = b.createModule(.{
+                .root_source_file = b.path("shim/wasm.zig"),
+                .target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding }),
+                .optimize = optimize
+            });
 
-    b.installArtifact(lib);
+            wasm_shim_mod.addImport("demarkate", demarkate);
 
-    if (target.query.cpu_arch == .wasm32) {
-        const wasm_shim_mod = b.createModule(.{
-            .root_source_file = b.path("shim/wasm.zig"),
-            .target = target,
-            .optimize = optimize
-        });
+            const wasm_exe = b.addExecutable(.{
+                .name = "demarkate",
+                .root_module = wasm_shim_mod
+            });
 
-        wasm_shim_mod.addImport("demarkate", demarkate);
+            wasm_exe.rdynamic = true;
+            wasm_exe.export_table = true;
+            wasm_exe.entry = .disabled;
+            wasm_exe.export_memory = true;
+            b.installArtifact(wasm_exe);
+            return;
+        }
+    }
 
-        const wasm_exe = b.addExecutable(.{
+    // Building lib
+    {
+        const lib = b.addLibrary(.{
+            .linkage = .static,
             .name = "demarkate",
-            .root_module = wasm_shim_mod
+            .root_module = demarkate,
         });
 
-        wasm_exe.rdynamic = true;
-        wasm_exe.export_table = true;
-        wasm_exe.entry = .disabled;
-        wasm_exe.export_memory = true;
-        b.installArtifact(wasm_exe);
-        return;
+        b.installArtifact(lib);
     }
 
     // Running exe
