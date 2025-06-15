@@ -10,12 +10,21 @@ const Error = error{ FormatError };
 
 pub fn init(source: [:0]const u8) Formatter {
     return .{
-        .source = source
+        .source = source,
     };
 }
 
 pub fn format(self: *const Formatter, elements: []ast.Element) Error!void {
+    var noop_next_line_break = false;
     for (elements) |*el| {
+        if (el.* != ast.Element.line_break) {
+            noop_next_line_break = true;
+        } else if (noop_next_line_break) {
+            el.* = .noop;
+            noop_next_line_break = false;
+            continue;
+        }
+
         try self.formatElement(el);
     }
 }

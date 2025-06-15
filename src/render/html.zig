@@ -160,6 +160,7 @@ pub const Renderer = struct {
             .code_literal,
             .text => |span| try self.appendSpan(span),
             .line_break => try self.openTag("br"),
+            .noop => {},
         };
     }
 

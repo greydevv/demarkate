@@ -28,6 +28,7 @@ pub const Element = union(enum) {
     code_literal: pos.Span,
     text: pos.Span,
     line_break: pos.Span,
+    noop,
 
     pub const Modifier = struct {
         children: std.ArrayList(Element),
