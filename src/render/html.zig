@@ -38,13 +38,16 @@ pub const Renderer = struct {
     fn renderElement(self: *Renderer, el: ast.Element) Error!void {
         return switch (el) {
             .heading => |h| {
-                try self.openTag(&.{ 'h', h.level });
+                var tag: [2]u8 = undefined;
+                _ = std.fmt.bufPrint(&tag, "h{}", .{ h.level }) catch unreachable;
+
+                try self.openTag(&tag);
 
                 for (h.children.items) |child| {
                     try self.renderElement(child);
                 }
 
-                try self.closeTag("h1");
+                try self.closeTag(&tag);
             },
             .callout => |callout| {
                 var class: []const u8 = undefined;
