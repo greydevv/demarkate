@@ -197,15 +197,15 @@ pub const Renderer = struct {
     fn closeTag(self: *Renderer, tag: []const u8) !void {
         const fmt = "</{s}>";
 
-        var buf: [16]u8 = undefined;
-        _ = std.fmt.bufPrint(&buf, fmt, .{ tag }) catch {
+        var tmp_buf: [16]u8 = undefined;
+        const buf = std.fmt.bufPrint(&tmp_buf, fmt, .{ tag }) catch {
             const tag_close = try std.fmt.allocPrint(self.allocator, fmt, .{ tag });
             defer self.allocator.free(tag);
             try self.buffer.appendSlice(tag_close);
             return;
         };
 
-        try self.buffer.appendSlice(&buf);
+        try self.buffer.appendSlice(buf);
     }
 
     fn appendSpan(self: *Renderer, span: pos.Span) !void {
