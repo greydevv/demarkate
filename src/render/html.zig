@@ -162,7 +162,13 @@ pub const Renderer = struct {
             },
             .code_literal,
             .text => |span| try self.appendSpan(span),
-            .line_break => try self.openTag("br"),
+            .line_break => {
+                try self.openTagWithAttrs("div", &.{
+                    .{ "class", "dmk_line_break" }
+                });
+
+                try self.closeTag("div");
+            },
             .noop => {},
         };
     }
