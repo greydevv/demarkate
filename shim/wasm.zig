@@ -41,8 +41,6 @@ export fn renderHtml(source_ptr: [*]const u8, source_len: usize) OutputSlice {
     const source_sentinel = allocator.allocSentinel(u8, source_len, 0) catch return .empty();
     @memcpy(source_sentinel, source_ptr);
     
-    printBytes(source_sentinel.ptr, source_sentinel.len);
-
     const document = dmk.parseBytes(allocator, source_sentinel) catch return .empty();
     defer document.deinit();
 
@@ -51,9 +49,6 @@ export fn renderHtml(source_ptr: [*]const u8, source_len: usize) OutputSlice {
     renderer.render(document.elements) catch return .empty();
 
     const out = renderer.buffer.toOwnedSlice() catch return .empty();
-
-    print(@intFromPtr(out.ptr));
-    print(out.len);
 
     return .{
         .ptr = @intFromPtr(out.ptr),
