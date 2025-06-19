@@ -120,7 +120,10 @@ fn parseInlineElement(self: *Parser) !ast.Element {
         .literal_text => self.parseLiteralText(),
         .keyword_url => self.parseUrl(),
         .keyword_img => self.parseImg(),
+        .open_paren,
+        .close_paren,
         .tab,
+        .colon,
         .pound => self.parseGreedilyAsLiteralText(),
         else => {
             if (modifierTagOrNull(token)) |_| {
@@ -142,12 +145,12 @@ fn parseOptionalAttributes(self: *Parser, expected_n: u8) Error!std.ArrayList(po
     var attrs = std.ArrayList(pos.Span).init(self.allocator);
     errdefer attrs.deinit();
 
-    while (self.tokens[self.tok_i].tag != .open_angle) {
+    while (self.tokens[self.tok_i].tag != .open_paren) {
         var span: ?pos.Span = null;
         attr: while (true) {
             const token = self.tokens[self.tok_i];
             switch (token.tag) {
-                .open_angle => {
+                .open_paren => {
                     break :attr;
                 },
                 .colon => {
@@ -184,7 +187,7 @@ fn parseImg(self: *Parser) Error!ast.Element {
     _ = self.assertToken(.keyword_img);
     self.skipToken();
 
-    _ = try self.expectToken(.open_angle);
+    _ = try self.expectToken(.open_paren);
     self.skipToken();
 
     var img = ast.Element{
@@ -198,13 +201,13 @@ fn parseImg(self: *Parser) Error!ast.Element {
     img.img.alt_text = try self.spanToNextToken(.semicolon);
     self.skipToken();
 
-    if (try self.spanToNextToken(.close_angle)) |src| {
+    if (try self.spanToNextToken(.close_paren)) |src| {
         img.img.src = src;
     } else {
         return self.err(Error.UnexpectedToken, self.tokens[self.tok_i]);
     }
 
-    _ = self.assertToken(.close_angle);
+    _ = self.assertToken(.close_paren);
     self.skipToken();
 
     return img;
@@ -214,7 +217,7 @@ fn parseUrl(self: *Parser) Error!ast.Element {
     _ = self.assertToken(.keyword_url);
     self.skipToken();
 
-    _ = try self.expectToken(.open_angle);
+    _ = try self.expectToken(.open_paren);
     self.skipToken();
 
     var url = ast.Element{
@@ -232,13 +235,13 @@ fn parseUrl(self: *Parser) Error!ast.Element {
 
     self.skipToken();
 
-    if (try self.spanToNextToken(.close_angle)) |href| {
+    if (try self.spanToNextToken(.close_paren)) |href| {
         url.url.href = href;
     } else {
         return self.err(Error.UnexpectedToken, self.tokens[self.tok_i]);
     }
 
-    _ = self.assertToken(.close_angle);
+    _ = self.assertToken(.close_paren);
     self.skipToken();
 
     return url;
@@ -251,7 +254,7 @@ fn parseBlockCode(self: *Parser) Error!ast.Element {
     const attrs = try self.parseOptionalAttributes(1);
     defer attrs.deinit();
 
-    _ = try self.expectToken(.open_angle);
+    _ = try self.expectToken(.open_paren);
     self.skipToken();
 
     _ = try self.expectToken(.newline);
@@ -267,7 +270,7 @@ fn parseBlockCode(self: *Parser) Error!ast.Element {
 
     while (true) {
         switch (self.tokens[self.tok_i].tag) {
-            .close_angle => break,
+            .close_paren => break,
             .newline => {},
             .tab => self.skipToken(),
             else => return self.err(Error.UnindentedCode, self.tokens[self.tok_i])
@@ -283,7 +286,7 @@ fn parseBlockCode(self: *Parser) Error!ast.Element {
         _ = try code.addChild(line_break);
     }
 
-    _ = self.assertToken(.close_angle);
+    _ = self.assertToken(.close_paren);
     self.skipToken();
 
     return code;
@@ -296,7 +299,7 @@ fn parseCallout(self: *Parser) Error!ast.Element {
     const attrs = try self.parseOptionalAttributes(1);
     defer attrs.deinit();
 
-    _ = try self.expectToken(.open_angle);
+    _ = try self.expectToken(.open_paren);
     self.skipToken();
 
     var callout = ast.Element{
@@ -307,12 +310,12 @@ fn parseCallout(self: *Parser) Error!ast.Element {
     };
     errdefer callout.deinit();
 
-    while (self.tokens[self.tok_i].tag != .close_angle) {
+    while (self.tokens[self.tok_i].tag != .close_paren) {
         const child = try self.parseInlineElement();
         _ = try callout.addChild(child);
     }
 
-    _ = self.assertToken(.close_angle);
+    _ = self.assertToken(.close_paren);
     self.skipToken();
 
     return callout;

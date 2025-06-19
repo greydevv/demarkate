@@ -23,8 +23,8 @@ pub const Token = struct {
         tilde,
         colon,
         semicolon,
-        open_angle,
-        close_angle,
+        open_paren,
+        close_paren,
         keyword_code,
         keyword_url,
         keyword_img,
@@ -139,11 +139,11 @@ fn nextStructural(self: *Tokenizer) ?Token {
             }
         },
         '(' => {
-            token.tag = .open_angle;
+            token.tag = .open_paren;
             self.index += 1;
         },
         ')' => {
-            token.tag = .close_angle;
+            token.tag = .close_paren;
             self.index += 1;
         },
         ' ' => {
@@ -220,9 +220,9 @@ test "tokenizes text-only source" {
 
 test "tokenizes escape character after structural token" {
     const source = source_builder
-        .tok(.open_angle, "(")
+        .tok(.open_paren, "(")
         .tok(.literal_text, "\\>")
-        .tok(.close_angle, ")")
+        .tok(.close_paren, ")")
         .eof();
     defer source.deinit();
 
@@ -249,9 +249,9 @@ test "tokenizes escape character at eof" {
 
 test "tokenizes literal text between structural tokens" {
     const source = source_builder
-        .tok(.open_angle, "(")
+        .tok(.open_paren, "(")
         .tok(.literal_text, "hello, world")
-        .tok(.close_angle, ")")
+        .tok(.close_paren, ")")
         .eof();
     defer source.deinit();
 
