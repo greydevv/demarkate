@@ -28,22 +28,22 @@ pub const Renderer = struct {
             .{ "class", "dmk_document" }
         });
 
-        for (elements) |el| {
+        for (elements) |*el| {
             try self.renderElement(el);
         }
 
         try self.closeTag("div");
     }
 
-    fn renderElement(self: *Renderer, el: ast.Element) Error!void {
-        return switch (el) {
+    fn renderElement(self: *Renderer, el: *const ast.Element) Error!void {
+        return switch (el.*) {
             .heading => |h| {
                 var tag: [2]u8 = undefined;
                 _ = std.fmt.bufPrint(&tag, "h{}", .{ h.level }) catch unreachable;
 
                 try self.openTag(&tag);
 
-                for (h.children.items) |child| {
+                for (h.children.items) |*child| {
                     try self.renderElement(child);
                 }
 
@@ -70,7 +70,7 @@ pub const Renderer = struct {
                     .{ "class", class }
                 });
 
-                for (callout.children.items) |child| {
+                for (callout.children.items) |*child| {
                     try self.renderElement(child);
                 }
 
@@ -81,7 +81,7 @@ pub const Renderer = struct {
                     .bold => {
                         try self.openTag("strong");
 
-                        for (modifier.children.items) |child| {
+                        for (modifier.children.items) |*child| {
                             try self.renderElement(child);
                         }
 
@@ -90,7 +90,7 @@ pub const Renderer = struct {
                     .italic => {
                         try self.openTag("em");
 
-                        for (modifier.children.items) |child| {
+                        for (modifier.children.items) |*child| {
                             try self.renderElement(child);
                         }
 
@@ -99,7 +99,7 @@ pub const Renderer = struct {
                     .underline => {
                         try self.openTag("s");
 
-                        for (modifier.children.items) |child| {
+                        for (modifier.children.items) |*child| {
                             try self.renderElement(child);
                         }
 
@@ -108,7 +108,7 @@ pub const Renderer = struct {
                     .strikethrough => {
                         try self.openTag("s");
 
-                        for (modifier.children.items) |child| {
+                        for (modifier.children.items) |*child| {
                             try self.renderElement(child);
                         }
 
@@ -126,15 +126,22 @@ pub const Renderer = struct {
                     try self.openTag("code");
                 }
 
-                for (block_code.children.items) |child| {
-                    try self.renderElement(child);
+                for (block_code.children.items) |*child| {
+                    if (child.* == ast.Element.line_break) {
+                        try self.openTag("br");
+                    } else {
+                        try self.renderElement(child);
+                    }
                 }
 
                 try self.closeTag("code");
                 try self.closeTag("pre");
             },
             .inline_code => |span| {
-                try self.openTag("code");
+                try self.openTagWithAttrs("code", &.{
+                    .{ "class", "dmk_inline_code" }
+                });
+
                 try self.appendSpan(span);
                 try self.closeTag("code");
             },
@@ -154,7 +161,7 @@ pub const Renderer = struct {
                     .{ "href",  url.href.slice(self.source) },
                 });
 
-                for (url.children.items) |child| {
+                for (url.children.items) |*child| {
                     try self.renderElement(child);
                 }
 
