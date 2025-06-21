@@ -120,16 +120,12 @@ fn parseInlineElement(self: *Parser) !ast.Element {
         .literal_text => self.parseLiteralText(),
         .keyword_url => self.parseUrl(),
         .keyword_img => self.parseImg(),
-        .open_paren,
-        .close_paren,
-        .tab,
-        .colon,
-        .pound => self.parseGreedilyAsLiteralText(),
         else => {
             if (modifierTagOrNull(token)) |_| {
                 return self.parseInlineModifier();
             } else {
-                return self.err(Error.InvalidInlineStart, token);
+                return self.parseGreedilyAsLiteralText();
+                // return self.err(Error.InvalidInlineStart, token);
             }
         }
     };

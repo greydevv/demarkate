@@ -14,6 +14,7 @@ pub const Token = struct {
 
     pub const Tag = enum {
         pound,
+        escaped_char,
         literal_text,
         newline,
         backtick,
@@ -146,6 +147,17 @@ fn nextStructural(self: *Tokenizer) ?Token {
             token.tag = .close_paren;
             self.index += 1;
         },
+        '\\' => {
+            token.tag = .escaped_char;
+            
+            if (self.buffer[self.index + 1] == 0) {
+                token.tag = .eof;
+            } else {
+                // skip escape character
+                token.span.start += 1;
+                self.index += 2;
+            }
+        },
         ' ' => {
             if (self.buffer.len - self.index > 4) {
                 if (std.mem.eql(u8, self.buffer[self.index..self.index + 4], " " ** 4)) {
@@ -177,22 +189,15 @@ fn literalText(self: *Tokenizer) Token {
     while (true) {
         // consume until we get some other token, then cache it
         if (self.nextStructural()) |next_token| {
-            token.span.end = next_token.span.start;
-            self.cached_token = next_token;
-            break;
-        }
-
-        // if escape, process next or return EOF
-        if (self.buffer[self.index] == '\\') {
-            // TODO: should 'escaping' EOF be an error?
-            if (self.buffer[self.index + 1] == 0) {
-                self.index += 1;
-                token.span.end = self.index;
-                break;
+            if (next_token.tag == .escaped_char) {
+                // don't capture escape character
+                token.span.end = next_token.span.start - 1;
+            } else {
+                token.span.end = next_token.span.start;
             }
 
-            self.index += 2;
-            continue;
+            self.cached_token = next_token;
+            break;
         }
 
         self.index += 1;
