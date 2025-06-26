@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const pos = @import("pos.zig");
 
 pub const Token = struct {
@@ -82,10 +83,14 @@ fn nextStructural(self: *Tokenizer) ?Token {
         0 => {
             token.tag = .eof;
         },
-        // TODO: DELETE THIS CASE. THIS IS JUST FOR TESTING (EARLY EXIT TO PARSER).
         '&' => {
+            if (builtin.mode != .Debug) {
+                // parse as literal text in Release* modes
+                return null;
+            }
+
             token.tag = .eof;
-            std.log.warn("Encountered early EOF character.", .{});
+            std.log.warn("Encountered early EOF character (debug only).", .{});
         },
         '#' => {
             token.tag = .pound;
