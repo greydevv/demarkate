@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) void {
     {
         if (compile_to_wasm) {
             const wasm_shim_mod = b.createModule(.{
-                .root_source_file = b.path("shim/wasm.zig"),
+                .root_source_file = b.path("src/shim/wasm.zig"),
                 .target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding }),
                 .optimize = optimize
             });
