@@ -1,6 +1,6 @@
 .{
     .name = .demarkate,
-    .version = "0.0.0-alpha.0",
+    .version = "0.0.0-alpha.1",
     .fingerprint = 0x6efd09c41368e2b,
     .dependencies = .{},
     .paths = .{
