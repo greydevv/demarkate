@@ -40,6 +40,7 @@ elements: std.ArrayList(ast.Element),
 errors: std.ArrayList(ErrorPayload),
 
 const Error = error{
+    UnexpectedEof,
     UnexpectedToken,
     InvalidBlockStart,
     InvalidInlineStart,
@@ -120,6 +121,7 @@ fn parseInlineElement(self: *Parser) !ast.Element {
         .literal_text => self.parseLiteralText(),
         .keyword_url => self.parseUrl(),
         .keyword_img => self.parseImg(),
+        .eof => return self.err(error.UnexpectedEof, token),
         else => {
             if (modifierTagOrNull(token)) |_| {
                 return self.parseInlineModifier();
