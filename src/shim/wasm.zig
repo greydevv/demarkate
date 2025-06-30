@@ -1,14 +1,12 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const dmk = @import("demarkate");
 
 extern fn printBytes([*]const u8, usize) void;
 extern fn print(usize) void;
 
 pub const std_options = std.Options{
-    // Set the log level to info
     .log_level = .info,
-
-    // Define logFn to override the std implementation
     .logFn = log,
 };
 
@@ -20,38 +18,79 @@ pub fn log(
 ) void {
     _ = scope;
 
-    const allocator = std.heap.wasm_allocator;
-    const bytes = std.fmt.allocPrint(allocator, level.asText() ++ ": " ++ format, args) catch return;
-    printBytes(bytes.ptr, bytes.len);
+    if (builtin.mode == .Debug) {
+        const allocator = std.heap.wasm_allocator;
+        const bytes = std.fmt.allocPrint(
+            allocator,
+            "[WASM:" ++ level.asText() ++ "] " ++ format,
+            args
+        ) catch return;
+        defer allocator.free(bytes);
+
+        printBytes(bytes.ptr, bytes.len);
+    }
 }
 
-const OutputSlice = packed struct (u64) {
+const OutputSlice = packed struct(u96) {
+    err_code: u32,
     ptr: u32,
     len: u32,
 
-    fn empty() OutputSlice {
-        return .{ .ptr = 0, .len = 0 };
+    fn ok(html: []const u8) OutputSlice {
+        return .{
+            .err_code = 0,
+            .ptr = @intFromPtr(html.ptr),
+            .len = html.len
+        };
+    }
+
+    fn err(allocator: std.mem.Allocator, e: anyerror) OutputSlice {
+        const msg = std.fmt.allocPrint(
+            allocator,
+            "{s}",
+            .{ @errorName(e) }
+        ) catch oom_err_msg;
+
+        return .{
+            .err_code = 1,
+            .ptr = @intFromPtr(msg.ptr),
+            .len = msg.len,
+        };
     }
 };
 
-var output: OutputSlice = undefined;
-
-export fn renderHtml(source_ptr: [*]const u8, source_len: usize) OutputSlice {
+export fn alloc(num_bytes: u32) u32 {
     const allocator = std.heap.wasm_allocator;
-    const source_sentinel = allocator.allocSentinel(u8, source_len, 0) catch return .empty();
+    const slice = allocator.alloc(u8, num_bytes) catch return 0;
+    return @intFromPtr(slice.ptr);
+}
+
+export fn free(ptr: [*]const u8, len: usize) void {
+    const allocator = std.heap.wasm_allocator;
+    allocator.free(ptr[0..len]);
+}
+
+var output: OutputSlice = undefined;
+const oom_err_msg: []const u8 = @errorName(error.OutOfMemory);
+
+export fn renderHtml(source_ptr: [*]const u8, source_len: usize) *OutputSlice {
+    const allocator = std.heap.wasm_allocator;
+    output = _renderHtml(allocator, source_ptr, source_len) catch |err| .err(allocator, err);
+
+    return &output;
+}
+
+fn _renderHtml(allocator: std.mem.Allocator, source_ptr: [*]const u8, source_len: usize) !OutputSlice {
+    const source_sentinel = try allocator.allocSentinel(u8, source_len, 0);
     @memcpy(source_sentinel, source_ptr);
     
-    const document = dmk.parseBytes(allocator, source_sentinel) catch return .empty();
+    const document = try dmk.parseBytes(allocator, source_sentinel);
     defer document.deinit();
 
     var renderer = dmk.HtmlRenderer.init(allocator, source_sentinel);
     defer renderer.deinit();
-    renderer.render(document.elements) catch return .empty();
+    try renderer.render(document.elements);
+    const html = try renderer.buffer.toOwnedSlice();
 
-    const out = renderer.buffer.toOwnedSlice() catch return .empty();
-
-    return .{
-        .ptr = @intFromPtr(out.ptr),
-        .len = out.len
-    };
+    return .ok(html);
 }

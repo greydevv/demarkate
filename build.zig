@@ -11,8 +11,8 @@ pub fn build(b: *std.Build) void {
     });
 
     // (Optionally) building for wasm32-freestanding
-    const compile_to_wasm = b.option(bool, "wasm", "target wasm32-freestanding") orelse false;
     {
+        const compile_to_wasm = b.option(bool, "wasm", "target wasm32-freestanding") orelse false;
         if (compile_to_wasm) {
             const wasm_shim_mod = b.createModule(.{
                 .root_source_file = b.path("src/shim/wasm.zig"),
