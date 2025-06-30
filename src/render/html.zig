@@ -159,6 +159,7 @@ pub const Renderer = struct {
             .url => |url| {
                 try self.openTagWithAttrs("a", &.{
                     .{ "href",  url.href.slice(self.source) },
+                    .{ "target", "_blank" }
                 });
 
                 for (url.children.items) |*child| {
