@@ -97,13 +97,13 @@ pub const Renderer = struct {
                         try self.closeTag("em");
                     },
                     .underline => {
-                        try self.openTag("s");
+                        try self.openTag("u");
 
                         for (modifier.children.items) |*child| {
                             try self.renderElement(child);
                         }
 
-                        try self.closeTag("s");
+                        try self.closeTag("u");
                     },
                     .strikethrough => {
                         try self.openTag("s");
