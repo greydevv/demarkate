@@ -126,6 +126,9 @@ pub fn expectEqual(expected_ast: std.ArrayList(ast.Element), actual_ast: std.Arr
             },
             .line_break => |line_break| {
                 try std.testing.expectEqual(line_break, actual.line_break);
+            },
+            .noop => |el| {
+                try std.testing.expectEqual(el, actual.noop);
             }
         }
     }

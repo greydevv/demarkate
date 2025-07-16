@@ -42,7 +42,7 @@ pub fn parseBytes(allocator: std.mem.Allocator, source: [:0]const u8) !Document 
     parser.parse() catch |parse_err| {
         for (parser.errors.items) |e| {
             const msg = try e.allocMsg(allocator);
-            std.log.err("{s}", .{ msg });
+            std.log.debug("Error: {s}", .{ msg });
             allocator.free(msg);
         }
 
@@ -62,4 +62,15 @@ pub fn parseBytes(allocator: std.mem.Allocator, source: [:0]const u8) !Document 
 
 test {
     @import("std").testing.refAllDecls(@This());
+}
+
+test "renders" {
+    const source = "hello, world!";
+    const allocator = std.testing.allocator;
+    const document = try parseBytes(allocator, source);
+    defer document.deinit();
+
+    var renderer = HtmlRenderer.init(allocator, source);
+    defer renderer.deinit();
+    try renderer.render(document.elements);
 }
