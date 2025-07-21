@@ -81,44 +81,18 @@ test "error" {
     try std.testing.expect(err_msg.len > 0);
 }
 
-fn _oom_alloc(
-    ctx: *anyopaque,
-    len: usize,
-    alignment: std.mem.Alignment,
-    return_address: usize
-) ?[*]u8 {
-    _ = ctx;
-    _ = len;
-    _ = alignment;
-    _ = return_address;
-    return null;
-}
-
 test "oom" {
-    var vtable = std.mem.Allocator.VTable{
-        .alloc = std.testing.allocator.vtable.alloc,
-        .resize = std.testing.allocator.vtable.resize,
-        .remap = std.testing.allocator.vtable.remap,
-        .free = std.testing.allocator.vtable.free,
-    };
+    var buffer: [32]u8 = undefined;
+    var fixed_allocator = std.heap.FixedBufferAllocator.init(&buffer);
+    const allocator = fixed_allocator.allocator();
 
-    const oom_allocator = std.mem.Allocator{
-        .ptr = std.testing.allocator.ptr,
-        .vtable = &vtable
-    };
-
-    const source = oom_allocator.dupe(u8, "hello, world!") catch |e| {
-        std.debug.print("Error: {s}\n", .{ @errorName(e) });
-        return;
-    };
-    defer oom_allocator.free(source);
-
-    vtable.alloc = _oom_alloc;
+    const source = try allocator.dupe(u8, "hello, world!");
+    defer allocator.free(source);
 
     // no need to free result.ptr[0..result.len] because result.ptr is a
     // pointer to the stack-allocated oom_err_msg
-    const result = renderHtml(oom_allocator, source.ptr, source.len);
-    
+    const result = renderHtml(allocator, source.ptr, source.len);
+
     try std.testing.expectEqual(1, result.err_code);
-    try std.testing.expectEqual(@errorName(error.OutOfMemory), result.ptr[0..result.len]);
+    try std.testing.expectEqualDeep(@errorName(error.OutOfMemory), result.ptr[0..result.len]);
 }
