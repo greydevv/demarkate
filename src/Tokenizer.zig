@@ -54,6 +54,7 @@ const State = enum {
     inline_code,
     inline_code_backslash,
     heading,
+    newline,
     unknown,
 };
 
@@ -139,10 +140,6 @@ fn nextStructural(self: *Tokenizer) Token {
                     token.tag = .tilde;
                     self.index += 1;
                 },
-                '\n' => {
-                    token.tag = .newline;
-                    self.index += 1;
-                },
                 ':' => {
                     token.tag = .colon;
                     self.index += 1;
@@ -185,6 +182,11 @@ fn nextStructural(self: *Tokenizer) Token {
                     token.tag = .pound;
                     self.index += 1;
                     continue :state .heading;
+                },
+                '\n' => {
+                    token.tag = .newline;
+                    self.index += 1;
+                    continue :state .newline;
                 },
                 else => {
                     self.index += 1;
@@ -255,6 +257,15 @@ fn nextStructural(self: *Tokenizer) Token {
                 '#' => {
                     self.index += 1;
                     continue :state .heading;
+                },
+                else => {}
+            }
+        },
+        .newline => {
+            switch (self.buffer[self.index]) {
+                '\n' => {
+                    self.index += 1;
+                    continue :state .newline;
                 },
                 else => {}
             }

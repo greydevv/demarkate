@@ -15,18 +15,7 @@ pub fn init(source: [:0]const u8) Formatter {
 }
 
 pub fn format(self: *const Formatter, elements: []ast.Element) Error!void {
-    var noop_next_line_break = false;
     for (elements) |*el| {
-        if (el.* == ast.Element.line_break) {
-            if (noop_next_line_break) {
-                el.* = .noop;
-            }
-
-            noop_next_line_break = false;
-        } else {
-            noop_next_line_break = true;
-        }
-
         try self.formatElement(el);
     }
 }
