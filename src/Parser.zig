@@ -118,6 +118,7 @@ fn parseInlineElement(self: *Parser) !ast.Element {
     return switch (token.tag) {
         .backtick => self.parseInlineCode(),
         .newline => self.parseLineBreak(),
+        .escaped_char => self.parseEscapedChar(),
         .literal_text => self.parseLiteralText(),
         .keyword_url => self.parseUrl(),
         .keyword_img => self.parseImg(),
@@ -373,6 +374,18 @@ fn parseLineBreak(self: *Parser) Error!ast.Element {
     self.skipToken();
     return ast.Element{
         .line_break = token.span
+    };
+}
+
+fn parseEscapedChar(self: *Parser) ast.Element {
+    const token = self.assertToken(.escaped_char);
+    self.skipToken();
+    return ast.Element {
+        .text = .{
+            // remove the backslash from the output
+            .start = token.span.start + 1,
+            .end = token.span.end
+        }
     };
 }
 
