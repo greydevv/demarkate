@@ -35,7 +35,7 @@ pub const Token = struct {
         unknown,
         eof,
 
-        fn fromBytes(bytes: []const u8) ?Tag {
+        fn keyword(bytes: []const u8) ?Tag {
             return Token.keywords.get(bytes);
         } 
 
@@ -43,6 +43,12 @@ pub const Token = struct {
             return std.meta.eql(self.*, other);
         }
     };
+};
+
+const State = enum {
+    start,
+    whitespace,
+    keyword
 };
 
 const Tokenizer = @This();
@@ -79,103 +85,111 @@ fn nextStructural(self: *Tokenizer) ?Token {
         }
     };
 
-    switch (self.buffer[self.index]) {
-        0 => {
-            token.tag = .eof;
-        },
-        '&' => {
-            if (builtin.mode != .Debug) {
-                // parse as literal text in Release* modes
-                return null;
-            }
+    state: switch (State.start) {
+        .start => {
+            switch (self.buffer[self.index]) {
+                0 => {
+                    token.tag = .eof;
+                },
+                '&' => {
+                    if (builtin.mode != .Debug) {
+                        // parse as literal text in Release* modes
+                        return null;
+                    }
 
-            token.tag = .eof;
-            std.log.warn("Encountered early EOF character (debug only).", .{});
-        },
-        '#' => {
-            token.tag = .pound;
-            while (self.buffer[self.index] == '#') {
-                self.index += 1;
+                    token.tag = .eof;
+                    std.log.warn("Encountered early EOF character (debug only).", .{});
+                },
+                '#' => {
+                    token.tag = .pound;
+                    while (self.buffer[self.index] == '#') {
+                        self.index += 1;
+                    }
+                },
+                '*' => {
+                    token.tag = .asterisk;
+                    self.index += 1;
+                },
+                '/' => {
+                    token.tag = .forward_slash;
+                    self.index += 1;
+                },
+                '_' => {
+                    token.tag = .underscore;
+                    self.index += 1;
+                },
+                '~' => {
+                    token.tag = .tilde;
+                    self.index += 1;
+                },
+                '`' => {
+                    token.tag = .backtick;
+                    self.index += 1;
+                },
+                '\n' => {
+                    token.tag = .newline;
+                    self.index += 1;
+                },
+                ':' => {
+                    token.tag = .colon;
+                    self.index += 1;
+                },
+                ';' => {
+                    token.tag = .semicolon;
+                    self.index += 1;
+                },
+                '(' => {
+                    token.tag = .open_paren;
+                    self.index += 1;
+                },
+                ')' => {
+                    token.tag = .close_paren;
+                    self.index += 1;
+                },
+                '\\' => {
+                    switch (self.buffer[self.index + 1]) {
+                        0, ' ', '\t'...'\r' => return null,
+                        else => {
+                            token.tag = .escaped_char;
+                            self.index += 2;
+                        }
+                    }
+                }, 
+                '@' => {
+                    self.index += 1;
+                    continue :state .keyword;
+                },
+                ' ' => continue :state .whitespace,
+                else => return null
             }
         },
-        '*' => {
-            token.tag = .asterisk;
-            self.index += 1;
-        },
-        '/' => {
-            token.tag = .forward_slash;
-            self.index += 1;
-        },
-        '_' => {
-            token.tag = .underscore;
-            self.index += 1;
-        },
-        '~' => {
-            token.tag = .tilde;
-            self.index += 1;
-        },
-        '`' => {
-            token.tag = .backtick;
-            self.index += 1;
-        },
-        '\n' => {
-            token.tag = .newline;
-            self.index += 1;
-        },
-        ':' => {
-            token.tag = .colon;
-            self.index += 1;
-        },
-        ';' => {
-            token.tag = .semicolon;
-            self.index += 1;
-        },
-        '@' => {
-            self.index += 1;
-            while (std.ascii.isAlphabetic(self.buffer[self.index])) {
-                self.index += 1;
-            }
-
-            const source = self.buffer[(token.span.start + 1)..self.index];
-
-            if (Token.Tag.fromBytes(source)) |keyword_tag| {
-                token.tag = keyword_tag;
-            } else {
-                token.tag = .literal_text;
-            }
-        },
-        '(' => {
-            token.tag = .open_paren;
-            self.index += 1;
-        },
-        ')' => {
-            token.tag = .close_paren;
-            self.index += 1;
-        },
-        '\\' => {
-            token.tag = .escaped_char;
-            
-            if (self.buffer[self.index + 1] == 0) {
-                token.tag = .eof;
-            } else {
-                // skip escape character
-                token.span.start += 1;
-                self.index += 2;
-            }
-        },
-        ' ' => {
-            if (self.buffer.len - self.index > 4) {
-                if (std.mem.eql(u8, self.buffer[self.index..self.index + 4], " " ** 4)) {
-                    token.tag = .tab;
-                    self.index += 4;
-                } else {
-                    return null;
+        .keyword => {
+            switch (self.buffer[self.index]) {
+                'a'...'z' => {
+                    self.index += 1;
+                    continue :state .keyword;
+                },
+                else => {
+                    const source = self.buffer[token.span.start + 1..self.index];
+                    if (Token.Tag.keyword(source)) |tag| {
+                        token.tag = tag;
+                    }
                 }
-            } else {
-                return null;
             }
         },
-        else => return null
+        .whitespace => {
+            switch (self.buffer[self.index]) {
+                ' ' => {
+                    self.index += 1;
+                    if (self.index - token.span.start == 4) {
+                        token.tag = .tab;
+                    } else {
+                        continue :state .whitespace;
+                    }
+                },
+                else => return null,
+            }
+        },
     }
 
     token.span.end = self.index;
@@ -194,17 +208,7 @@ fn literalText(self: *Tokenizer) Token {
     while (true) {
         // consume until we get some other token, then cache it
         if (self.nextStructural()) |next_token| {
-            if (next_token.tag == .escaped_char) {
-                // we skipped the literal '\' when setting the span for
-                // escaped_char (one token ahead here), so we need to make sure
-                // this token doesn't include the '\' in its span.
-                //
-                // TODO: we shouldn't have to do this here.
-                token.span.end = next_token.span.start - 1;
-            } else {
-                token.span.end = next_token.span.start;
-            }
-
+            token.span.end = next_token.span.start;
             self.cached_token = next_token;
             break;
         }
@@ -297,11 +301,11 @@ test "repeated escape characters" {
 
     var actual = tokens[0];
     try std.testing.expectEqual(.escaped_char, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 1, .end = 2 }, actual.span);
+    try std.testing.expectEqual(pos.Span{ .start = 0, .end = 2 }, actual.span);
 
     actual = tokens[1];
     try std.testing.expectEqual(.escaped_char, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 3, .end = 4 }, actual.span);
+    try std.testing.expectEqual(pos.Span{ .start = 2, .end = 4 }, actual.span);
 
     actual = tokens[2];
     try std.testing.expectEqual(.eof, actual.tag);
@@ -318,7 +322,7 @@ test "escape character after structural token" {
 
     actual = tokens[1];
     try std.testing.expectEqual(.escaped_char, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 2, .end = 3 }, actual.span);
+    try std.testing.expectEqual(pos.Span{ .start = 1, .end = 3 }, actual.span);
 
     actual = tokens[2];
     try std.testing.expectEqual(.eof, actual.tag);
@@ -337,22 +341,26 @@ test "escape character after non-structural token" {
 
     actual = tokens[1];
     try std.testing.expectEqual(.escaped_char, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 4, .end = 5 }, actual.span);
+    try std.testing.expectEqual(pos.Span{ .start = 3, .end = 5 }, actual.span);
 
     actual = tokens[2];
     try std.testing.expectEqual(.eof, actual.tag);
     try std.testing.expectEqual(pos.Span{ .start = 5, .end = 5 }, actual.span);
 }
 
-test "ignores escape character at eof" {
+test "escape character at eof" {
     const tokens = try tokenize("\\");
     defer std.testing.allocator.free(tokens);
 
-    try std.testing.expectEqual(1, tokens.len);
+    try std.testing.expectEqual(2, tokens.len);
 
-    const actual = tokens[0];
+    var actual = tokens[0];
+    try std.testing.expectEqual(.literal_text, actual.tag);
+    try std.testing.expectEqual(pos.Span{ .start = 0, .end = 1 }, actual.span);
+
+    actual = tokens[1];
     try std.testing.expectEqual(.eof, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 0, .end = 0 }, actual.span);
+    try std.testing.expectEqual(pos.Span{ .start = 1, .end = 1 }, actual.span);
 }
 
 test "literal text between structural tokens" {
