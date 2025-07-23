@@ -1,5 +1,4 @@
 const std = @import("std");
-const builtin = @import("builtin");
 const pos = @import("pos.zig");
 
 pub const Token = struct {
@@ -18,7 +17,9 @@ pub const Token = struct {
         escaped_char,
         literal_text,
         newline,
-        backtick,
+        inline_code,
+        empty_inline_code,
+        unterminated_inline_code,
         asterisk,
         forward_slash,
         underscore,
@@ -48,7 +49,12 @@ pub const Token = struct {
 const State = enum {
     start,
     whitespace,
-    keyword
+    keyword,
+    open_inline_code,
+    inline_code,
+    inline_code_backslash,
+    heading,
+    unknown,
 };
 
 const Tokenizer = @This();
@@ -69,14 +75,40 @@ pub fn next(self: *Tokenizer) Token {
     if (self.cached_token) |token| {
         self.cached_token = null;
         return token;
-    } else if (self.nextStructural()) |next_structural_token| {
-        return next_structural_token;
-    } else {
-        return self.literalText();
+    }
+
+    return self._next();
+}
+
+fn _next(self: *Tokenizer) Token {
+    var token = Token{
+        .tag = .literal_text,
+        .span = .{
+            .start = self.index,
+            .end = undefined,
+        }
+    };
+
+    while (true) {
+        const next_token = self.nextStructural();
+
+        if (next_token.tag == .literal_text) {
+            token.span.end = next_token.span.end;
+            continue;
+        }
+
+        token.span.end = next_token.span.start;
+        if (token.span.len() == 0) {
+            return next_token;
+        } else {
+            std.debug.assert(self.cached_token == null);
+            self.cached_token = next_token;
+            return token;
+        }
     }
 }
 
-fn nextStructural(self: *Tokenizer) ?Token {
+fn nextStructural(self: *Tokenizer) Token {
     var token = Token{
         .tag = undefined,
         .span = .{
@@ -90,21 +122,6 @@ fn nextStructural(self: *Tokenizer) ?Token {
             switch (self.buffer[self.index]) {
                 0 => {
                     token.tag = .eof;
-                },
-                '&' => {
-                    if (builtin.mode != .Debug) {
-                        // parse as literal text in Release* modes
-                        return null;
-                    }
-
-                    token.tag = .eof;
-                    std.log.warn("Encountered early EOF character (debug only).", .{});
-                },
-                '#' => {
-                    token.tag = .pound;
-                    while (self.buffer[self.index] == '#') {
-                        self.index += 1;
-                    }
                 },
                 '*' => {
                     token.tag = .asterisk;
@@ -120,10 +137,6 @@ fn nextStructural(self: *Tokenizer) ?Token {
                 },
                 '~' => {
                     token.tag = .tilde;
-                    self.index += 1;
-                },
-                '`' => {
-                    token.tag = .backtick;
                     self.index += 1;
                 },
                 '\n' => {
@@ -148,7 +161,10 @@ fn nextStructural(self: *Tokenizer) ?Token {
                 },
                 '\\' => {
                     switch (self.buffer[self.index + 1]) {
-                        0, ' ', '\t'...'\r' => return null,
+                        0, ' ', '\t'...'\r' => {
+                            self.index += 1;
+                            continue :state .unknown;
+                        },
                         else => {
                             token.tag = .escaped_char;
                             self.index += 2;
@@ -160,7 +176,20 @@ fn nextStructural(self: *Tokenizer) ?Token {
                     continue :state .keyword;
                 },
                 ' ' => continue :state .whitespace,
-                else => return null
+                '`' => {
+                    token.tag = .inline_code;
+                    self.index += 1;
+                    continue :state .open_inline_code;
+                },
+                '#' => {
+                    token.tag = .pound;
+                    self.index += 1;
+                    continue :state .heading;
+                },
+                else => {
+                    self.index += 1;
+                    continue :state .unknown;
+                }
             }
         },
         .keyword => {
@@ -173,6 +202,8 @@ fn nextStructural(self: *Tokenizer) ?Token {
                     const source = self.buffer[token.span.start + 1..self.index];
                     if (Token.Tag.keyword(source)) |tag| {
                         token.tag = tag;
+                    } else {
+                        continue :state .unknown;
                     }
                 }
             }
@@ -187,35 +218,53 @@ fn nextStructural(self: *Tokenizer) ?Token {
                         continue :state .whitespace;
                     }
                 },
-                else => return null,
+                else => token.tag = .literal_text,
             }
         },
+        .open_inline_code => {
+            switch (self.buffer[self.index]) {
+                '`' => token.tag = .empty_inline_code,
+                else => continue :state .inline_code,
+            }
+        },
+        .inline_code => {
+            switch (self.buffer[self.index]) {
+                0, '\n' => token.tag = .unterminated_inline_code,
+                '\\' => {
+                    self.index += 1;
+                    continue :state .inline_code_backslash; 
+                },
+                '`' => self.index += 1,
+                else => {
+                    self.index += 1;
+                    continue :state .inline_code;
+                }
+            }
+        },
+        .inline_code_backslash => {
+            switch (self.buffer[self.index]) {
+                0, '\n' => token.tag = .unterminated_inline_code,
+                else => {
+                    self.index += 1;
+                    continue :state .inline_code;
+                }
+            }
+        },
+        .heading => {
+            switch (self.buffer[self.index]) {
+                '#' => {
+                    self.index += 1;
+                    continue :state .heading;
+                },
+                else => {}
+            }
+        },
+        .unknown => {
+            token.tag = .literal_text;
+        }
     }
 
     token.span.end = self.index;
-    return token;
-}
-
-fn literalText(self: *Tokenizer) Token {
-    var token = Token{
-        .tag = .literal_text,
-        .span = .{
-            .start = self.index,
-            .end = undefined,
-        }
-    };
-
-    while (true) {
-        // consume until we get some other token, then cache it
-        if (self.nextStructural()) |next_token| {
-            token.span.end = next_token.span.start;
-            self.cached_token = next_token;
-            break;
-        }
-
-        self.index += 1;
-    }
-
     return token;
 }
 

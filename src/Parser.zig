@@ -45,7 +45,7 @@ const Error = error{
     InvalidBlockStart,
     InvalidInlineStart,
     TooManyAttrs,
-    UnterminatedInlineCode,
+    EmptyInlineModifier,
     UnterminatedInlineModifier,
     UnindentedCode,
     UnsupportedHeadingSize,
@@ -116,13 +116,15 @@ fn parseBlockElement(self: *Parser) !ast.Element {
 fn parseInlineElement(self: *Parser) !ast.Element {
     const token = self.tokens[self.tok_i];
     return switch (token.tag) {
-        .backtick => self.parseInlineCode(),
+        .inline_code => self.parseInlineCode(),
         .newline => self.parseLineBreak(),
         .escaped_char => self.parseEscapedChar(),
         .literal_text => self.parseLiteralText(),
         .keyword_url => self.parseUrl(),
         .keyword_img => self.parseImg(),
-        .eof => return self.err(error.UnexpectedEof, token),
+        .empty_inline_code => return self.err(Error.EmptyInlineModifier, token),
+        .unterminated_inline_code => return self.err(Error.UnterminatedInlineModifier, token),
+        .eof => return self.err(Error.UnexpectedEof, token),
         else => {
             if (modifierTagOrNull(token)) |_| {
                 return self.parseInlineModifier();
@@ -338,35 +340,16 @@ fn parseHeading(self: *Parser) Error!ast.Element {
 }
 
 fn parseInlineCode(self: *Parser) Error!ast.Element {
-    const open_backtick = self.assertToken(.backtick);
+    const token = self.assertToken(.inline_code);
     self.skipToken();
-
-    var el = ast.Element{
-        .inline_code = self.tokens[self.tok_i].span
+    return ast.Element{
+        .inline_code = .{
+            // remove the leading backtick
+            .start = token.span.start + 1,
+            // remove the trailing backtick
+            .end = token.span.end - 1
+        }
     };
-
-    while (true) {
-        const token = self.tokens[self.tok_i];
-
-        if (token.tag == .newline or token.tag == .eof) {
-            return self.err(Error.UnterminatedInlineCode, open_backtick);
-        }
-
-        switch (token.tag) {
-            .newline,
-            .eof => return self.err(Error.UnterminatedInlineCode, open_backtick),
-            .backtick => {
-                self.skipToken();
-                break;
-            },
-            else => {
-                el.inline_code.end = token.span.end;
-                self.skipToken();
-            }
-        }
-    }
-
-    return el;
 }
 
 fn parseLineBreak(self: *Parser) Error!ast.Element {
@@ -572,9 +555,9 @@ fn err(
     return e;
 }
 
-test "fails on unterminated inline code" {
+test "fails on empty inline code" {
     const source = source_builder
-        .tok(.backtick, "`")
+        .tok(.empty_inline_code, "``")
         .eof();
     defer source.deinit();
 
@@ -582,7 +565,22 @@ test "fails on unterminated inline code" {
 
     try expectError(
         tokens,
-        Error.UnterminatedInlineCode,
+        Error.EmptyInlineModifier,
+        tokens[0],
+    );
+}
+
+test "fails on unterminated inline code" {
+    const source = source_builder
+        .tok(.unterminated_inline_code, "`")
+        .eof();
+    defer source.deinit();
+
+    const tokens = source.tokens;
+
+    try expectError(
+        tokens,
+        Error.UnterminatedInlineModifier,
         tokens[0],
     );
 }
