@@ -143,8 +143,8 @@ pub const Renderer = struct {
                 defer new_source.deinit();
 
                 const source = span.slice(self.source);
-                for (source, 0..) |char, index| {
-                    if (index < source.len - 1 and char == '\\' and source[index + 1] == '`') {
+                for (source, 0..) |char, i| {
+                    if (i < source.len - 1 and char == '\\' and source[i + 1] == '`') {
                         continue;
                     }
 
