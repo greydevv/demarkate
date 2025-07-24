@@ -138,11 +138,24 @@ pub const Renderer = struct {
                 try self.closeTag("pre");
             },
             .inline_code => |span| {
+                // remove escaped backticks
+                var new_source = std.ArrayList(u8).init(self.allocator);
+                defer new_source.deinit();
+
+                const source = span.slice(self.source);
+                for (source, 0..) |char, index| {
+                    if (index < source.len - 1 and char == '\\' and source[index + 1] == '`') {
+                        continue;
+                    }
+
+                    try new_source.append(char);
+                }
+
                 try self.openTagWithAttrs("code", &.{
                     .{ "class", "dmk_inline_code" }
                 });
 
-                try self.appendSpan(span);
+                try self.buffer.appendSlice(new_source.items);
                 try self.closeTag("code");
             },
             .img => |img| {
