@@ -93,11 +93,12 @@ fn parseTopLevelElement(self: *Parser) !ast.Element {
 
     const block = self.parseBlockElement() catch |e| {
         if (e == Error.InvalidBlockStart) {
+            // fall back to parsing inline element
             _ = self.errors.pop();
             return self.parseInlineElement();
-        } else {
-            return e;
         }
+
+        return e;
     };
 
     return block;
