@@ -280,71 +280,33 @@ fn nextStructural(self: *Tokenizer) Token {
 }
 
 test "empty" {
-    const tokens = try tokenize("");
-    defer std.testing.allocator.free(tokens);
-
-    try std.testing.expectEqual(1, tokens.len);
-
-    const actual = tokens[0];
-    try std.testing.expectEqual(.eof, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 0, .end = 0 }, actual.span);
+    try testTokenize("", &.{
+        .eof
+    });
 }
 
-test "structual" {
-    const tokens = try tokenize("*");
-    defer std.testing.allocator.free(tokens);
-
-    try std.testing.expectEqual(2, tokens.len);
-
-    var actual = tokens[0];
-    try std.testing.expectEqual(.asterisk, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 0, .end = 1 }, actual.span);
-
-    actual = tokens[1];
-    try std.testing.expectEqual(.eof, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 1, .end = 1 }, actual.span);
+test "structural" {
+    try testTokenize("*", &.{
+        .asterisk,
+        .eof
+    });
 }
 
 test "literal text" {
-    const tokens = try tokenize("foo");
-    defer std.testing.allocator.free(tokens);
-
-    try std.testing.expectEqual(2, tokens.len);
-
-    var actual = tokens[0];
-    try std.testing.expectEqual(.literal_text, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 0, .end = 3 }, actual.span);
-
-    actual = tokens[1];
-    try std.testing.expectEqual(.eof, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 3, .end = 3 }, actual.span);
+    try testTokenize("foo", &.{
+        .literal_text,
+        .eof
+    });
 }
 
 test "keywords" {
-    const tokens = try tokenize("@code@url@img@callout");
-    defer std.testing.allocator.free(tokens);
-
-    try std.testing.expectEqual(5, tokens.len);
-
-    var actual = tokens[0];
-    try std.testing.expectEqual(.keyword_code, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 0, .end = 5 }, actual.span);
-
-    actual = tokens[1];
-    try std.testing.expectEqual(.keyword_url, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 5, .end = 9 }, actual.span);
-
-    actual = tokens[2];
-    try std.testing.expectEqual(.keyword_img, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 9, .end = 13 }, actual.span);
-
-    actual = tokens[3];
-    try std.testing.expectEqual(.keyword_callout, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 13, .end = 21 }, actual.span);
-
-    actual = tokens[4];
-    try std.testing.expectEqual(.eof, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 21, .end = 21 }, actual.span);
+    try testTokenize("@code@url@img@callout", &.{
+        .keyword_code,
+        .keyword_url,
+        .keyword_img,
+        .keyword_callout,
+        .eof
+    });
 
     std.testing.expectEqual(4, Token.keywords.kvs.len) catch {
         // test needs to be updated to account for the recent changes to the
@@ -354,122 +316,76 @@ test "keywords" {
 }
 
 test "repeated escape characters" {
-    const tokens = try tokenize("\\#\\#");
-    defer std.testing.allocator.free(tokens);
-
-    try std.testing.expectEqual(3, tokens.len);
-
-    var actual = tokens[0];
-    try std.testing.expectEqual(.escaped_char, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 0, .end = 2 }, actual.span);
-
-    actual = tokens[1];
-    try std.testing.expectEqual(.escaped_char, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 2, .end = 4 }, actual.span);
-
-    actual = tokens[2];
-    try std.testing.expectEqual(.eof, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 4, .end = 4 }, actual.span);
+    try testTokenize("\\#\\#", &.{
+        .escaped_char,
+        .escaped_char,
+        .eof
+    });
 }
 
 test "escape character after structural token" {
-    const tokens = try tokenize("*\\#");
-    defer std.testing.allocator.free(tokens);
-
-    var actual = tokens[0];
-    try std.testing.expectEqual(.asterisk, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 0, .end = 1 }, actual.span);
-
-    actual = tokens[1];
-    try std.testing.expectEqual(.escaped_char, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 1, .end = 3 }, actual.span);
-
-    actual = tokens[2];
-    try std.testing.expectEqual(.eof, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 3, .end = 3 }, actual.span);
+    try testTokenize("*\\#", &.{
+        .asterisk,
+        .escaped_char,
+        .eof
+    });
 } 
 
 test "escape character after non-structural token" {
-    const tokens = try tokenize("foo\\#");
-    defer std.testing.allocator.free(tokens);
-
-    try std.testing.expectEqual(3, tokens.len);
-
-    var actual = tokens[0];
-    try std.testing.expectEqual(.literal_text, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 0, .end = 3 }, actual.span);
-
-    actual = tokens[1];
-    try std.testing.expectEqual(.escaped_char, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 3, .end = 5 }, actual.span);
-
-    actual = tokens[2];
-    try std.testing.expectEqual(.eof, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 5, .end = 5 }, actual.span);
+    try testTokenize("foo\\#", &.{
+        .literal_text,
+        .escaped_char,
+        .eof
+    });
 }
 
 test "escape character at eof" {
-    const tokens = try tokenize("\\");
-    defer std.testing.allocator.free(tokens);
-
-    try std.testing.expectEqual(2, tokens.len);
-
-    var actual = tokens[0];
-    try std.testing.expectEqual(.literal_text, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 0, .end = 1 }, actual.span);
-
-    actual = tokens[1];
-    try std.testing.expectEqual(.eof, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 1, .end = 1 }, actual.span);
+    try testTokenize("\\", &.{
+        .literal_text,
+        .eof
+    });
 }
 
 test "literal text between structural tokens" {
-    const tokens = try tokenize("*foo*");
-    defer std.testing.allocator.free(tokens);
-
-    try std.testing.expectEqual(4, tokens.len);
-
-    var actual = tokens[0];
-    try std.testing.expectEqual(.asterisk, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 0, .end = 1 }, actual.span);
-
-    actual = tokens[1];
-    try std.testing.expectEqual(.literal_text, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 1, .end = 4 }, actual.span);
-
-    actual = tokens[2];
-    try std.testing.expectEqual(.asterisk, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 4, .end = 5 }, actual.span);
-
-    actual = tokens[3];
-    try std.testing.expectEqual(.eof, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 5, .end = 5 }, actual.span);
+    try testTokenize("*foo*", &.{
+        .asterisk,
+        .literal_text,
+        .asterisk,
+        .eof
+    });
 }
 
 test "structural token between literal text" {
-    const tokens = try tokenize("foo*bar");
-    defer std.testing.allocator.free(tokens);
+    try testTokenize("foo*bar", &.{
+        .literal_text,
+        .asterisk,
+        .literal_text,
+        .eof
+    });
+}
 
-    try std.testing.expectEqual(4, tokens.len);
-
-    var actual = tokens[0];
-    try std.testing.expectEqual(.literal_text, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 0, .end = 3 }, actual.span);
-
-    actual = tokens[1];
-    try std.testing.expectEqual(.asterisk, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 3, .end = 4 }, actual.span);
-
-    actual = tokens[2];
-    try std.testing.expectEqual(.literal_text, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 4, .end = 7 }, actual.span);
-
-    actual = tokens[3];
-    try std.testing.expectEqual(.eof, actual.tag);
-    try std.testing.expectEqual(pos.Span{ .start = 7, .end = 7 }, actual.span);
+test "inline code escape sequence" {
+    try testTokenize("`\\``", &.{
+        .inline_code,
+        .eof
+    });
 }
 
 const source_builder = @import("testing/source_builder.zig");
+
+fn testTokenize(source: [:0]const u8, expected_tags: []const Token.Tag) !void {
+    const tokens = try tokenize(source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectEqual(expected_tags.len, tokens.len);
+    for (tokens, 0..) |token, i| {
+        try std.testing.expectEqual(expected_tags[i], token.tag);
+    }
+
+    const last = tokens[tokens.len - 1];
+    try std.testing.expectEqual(source.len, last.span.start);
+    try std.testing.expectEqual(source.len, last.span.end);
+}
 
 fn tokenize(source: [:0]const u8) ![]const Token {
     var tokens = std.ArrayList(Token).init(std.testing.allocator);
