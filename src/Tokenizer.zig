@@ -308,17 +308,30 @@ test "keywords" {
         .eof
     });
 
-    std.testing.expectEqual(4, Token.keywords.kvs.len) catch {
-        // test needs to be updated to account for the recent changes to the
-        // keywords map
-        return error.TestExpectedEqual;
-    };
+
+    // the keywords map was updated and this failure signals to update the test
+    // to reflect those changes
+    try std.testing.expectEqual(4, Token.keywords.kvs.len);
+}
+
+test "no matching keyword" {
+    try testTokenize("@unsupported", &.{
+        .literal_text,
+        .eof
+    });
 }
 
 test "repeated escape characters" {
     try testTokenize("\\#\\#", &.{
         .escaped_char,
         .escaped_char,
+        .eof
+    });
+}
+
+test "repeated newlines" {
+    try testTokenize("\n\n\n", &.{
+        .newline,
         .eof
     });
 }
