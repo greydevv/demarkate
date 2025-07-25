@@ -332,6 +332,11 @@ fn parseHeading(self: *Parser) Error!ast.Element {
     }
 
     const children = try self.expectInlineUntilLineBreakOrEof();
+
+    if (self.tokens[self.tok_i].tag == .newline) {
+        self.skipToken();
+    }
+
     return ast.Element{
         .heading = .{
             .level = @intCast(pound_token.span.len()),
