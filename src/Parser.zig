@@ -59,25 +59,25 @@ pub fn init(allocator: std.mem.Allocator, tokens: []const Tokenizer.Token) Parse
         .tok_i = 0,
         // TODO: use assume capacity strategy that zig uses, ((tokens.len + 2) / 2),
         // but modified for markdown ratio
-        .elements = .init(allocator),
-        .errors = .init(allocator),
+        .elements = .empty,
+        .errors = .empty,
     };
 }
 
 pub fn deinit(self: *Parser) void {
     for (self.elements.items) |*el| {
-        el.deinit();
+        el.deinit(self.allocator);
     }
 
-    self.elements.deinit();
-    self.errors.deinit();
+    self.elements.deinit(self.allocator);
+    self.errors.deinit(self.allocator);
 }
 
 pub fn parse(self: *Parser) !void {
     while (self.tokens[self.tok_i].tag != .eof) {
-        const el = try self.parseTopLevelElement();
-        errdefer el.deinit();
-        try self.elements.append(el);
+        var el = try self.parseTopLevelElement();
+        errdefer el.deinit(self.allocator);
+        try self.elements.append(self.allocator, el);
     }
 }
 
@@ -144,8 +144,8 @@ fn parseOptionalAttributes(self: *Parser, expected_n: u8) Error!std.ArrayList(po
         unreachable;
     }
 
-    var attrs = std.ArrayList(pos.Span).init(self.allocator);
-    errdefer attrs.deinit();
+    var attrs = std.ArrayList(pos.Span).empty;
+    errdefer attrs.deinit(self.allocator);
 
     while (self.tokens[self.tok_i].tag != .open_paren) {
         var span: ?pos.Span = null;
@@ -174,7 +174,7 @@ fn parseOptionalAttributes(self: *Parser, expected_n: u8) Error!std.ArrayList(po
         }
 
         if (span) |some_span| {
-            try attrs.append(some_span);
+            try attrs.append(self.allocator, some_span);
         }
     }
 
@@ -198,7 +198,7 @@ fn parseImg(self: *Parser) Error!ast.Element {
             .alt_text = undefined
         }
     };
-    errdefer img.deinit();
+    errdefer img.deinit(self.allocator);
 
     img.img.alt_text = try self.spanToNextToken(.semicolon);
     self.skipToken();
@@ -224,15 +224,15 @@ fn parseUrl(self: *Parser) Error!ast.Element {
 
     var url = ast.Element{
         .url = .{
-            .children = .init(self.allocator),
+            .children = .empty,
             .href = undefined,
         }
     };
-    errdefer url.deinit();
+    errdefer url.deinit(self.allocator);
 
     while (self.tokens[self.tok_i].tag != .semicolon) {
         const child = try self.parseInlineElement();
-        _ = try url.addChild(child);
+        _ = try url.addChild(self.allocator, child);
     }
 
     self.skipToken();
@@ -253,8 +253,8 @@ fn parseBlockCode(self: *Parser) Error!ast.Element {
     _ = self.assertToken(.keyword_code);
     self.skipToken();
 
-    const attrs = try self.parseOptionalAttributes(1);
-    defer attrs.deinit();
+    var attrs = try self.parseOptionalAttributes(1);
+    defer attrs.deinit(self.allocator);
 
     _ = try self.expectToken(.open_paren);
     self.skipToken();
@@ -265,10 +265,10 @@ fn parseBlockCode(self: *Parser) Error!ast.Element {
     var code = ast.Element{
         .block_code = .{
             .lang = if (attrs.items.len > 0) attrs.items[0] else null,
-            .children = .init(self.allocator)
+            .children = .empty
         }
     };
-    errdefer code.deinit();
+    errdefer code.deinit(self.allocator);
 
     while (true) {
         switch (self.tokens[self.tok_i].tag) {
@@ -279,13 +279,13 @@ fn parseBlockCode(self: *Parser) Error!ast.Element {
         }
 
         if (try self.spanToNextToken(.newline)) |some_span| {
-            _ = try code.addChild(ast.Element{
+            _ = try code.addChild(self.allocator, ast.Element{
                 .code_literal = some_span
             });
         }
 
         const line_break = try self.parseLineBreak();
-        _ = try code.addChild(line_break);
+        _ = try code.addChild(self.allocator, line_break);
     }
 
     _ = self.assertToken(.close_paren);
@@ -298,8 +298,8 @@ fn parseCallout(self: *Parser) Error!ast.Element {
     _ = self.assertToken(.keyword_callout);
     self.skipToken();
 
-    const attrs = try self.parseOptionalAttributes(1);
-    defer attrs.deinit();
+    var attrs = try self.parseOptionalAttributes(1);
+    defer attrs.deinit(self.allocator);
 
     _ = try self.expectToken(.open_paren);
     self.skipToken();
@@ -307,14 +307,14 @@ fn parseCallout(self: *Parser) Error!ast.Element {
     var callout = ast.Element{
         .callout = .{
             .style = if (attrs.items.len > 0) attrs.items[0] else null,
-            .children = .init(self.allocator),
+            .children = .empty,
         }
     };
-    errdefer callout.deinit();
+    errdefer callout.deinit(self.allocator);
 
     while (self.tokens[self.tok_i].tag != .close_paren) {
         const child = try self.parseInlineElement();
-        _ = try callout.addChild(child);
+        _ = try callout.addChild(self.allocator, child);
     }
 
     _ = self.assertToken(.close_paren);
@@ -449,15 +449,15 @@ fn expectToken(self: *Parser, expected_tag: Tokenizer.Token.Tag) Error!Tokenizer
 }
 
 fn expectInlineUntilLineBreakOrEof(self: *Parser) !std.ArrayList(ast.Element) {
-    var children = std.ArrayList(ast.Element).init(self.allocator);
-    errdefer children.deinit();
+    var children = std.ArrayList(ast.Element).empty;
+    errdefer children.deinit(self.allocator);
 
     var token = self.tokens[self.tok_i];
     while (token.tag != .newline and token.tag != .eof) {
-        const child_el = try self.parseInlineElement();
-        errdefer child_el.deinit();
+        var child_el = try self.parseInlineElement();
+        errdefer child_el.deinit(self.allocator);
 
-        _ = try children.append(child_el);
+        _ = try children.append(self.allocator, child_el);
         token = self.tokens[self.tok_i];
     }
 
@@ -473,16 +473,16 @@ fn parseInlineModifier(self: *Parser) Error!ast.Element {
 
     var outer_most_modifier = ast.Element{
         .modifier = .{
-            .children = .init(self.allocator),
+            .children = .empty,
             .tag = modifierTagOrNull(open_modifier_token) orelse unreachable
         }
     };
-    errdefer outer_most_modifier.deinit();
+    errdefer outer_most_modifier.deinit(self.allocator);
 
-    var modifier_el_stack = std.ArrayList(*ast.Element).init(self.allocator);
-    defer modifier_el_stack.deinit();
+    var modifier_el_stack = std.ArrayList(*ast.Element).empty;
+    defer modifier_el_stack.deinit(self.allocator);
 
-    try modifier_el_stack.append(&outer_most_modifier);
+    try modifier_el_stack.append(self.allocator, &outer_most_modifier);
 
     while (modifier_el_stack.items.len > 0) {
         const token = self.tokens[self.tok_i];
@@ -500,21 +500,21 @@ fn parseInlineModifier(self: *Parser) Error!ast.Element {
                 // modifier OPENED, push it to stack
                 const el = ast.Element{
                     .modifier = .{
-                        .children = .init(self.allocator),
+                        .children = .empty,
                         .tag = modifier_tag
                     }
                 };
 
                 const old_top = modifier_el_stack.getLast();
-                _ = try old_top.addChild(el);
-                try modifier_el_stack.append(old_top.lastChild());
+                _ = try old_top.addChild(self.allocator, el);
+                try modifier_el_stack.append(self.allocator, old_top.lastChild());
                 open_modifier_token = token;
             }
 
             self.skipToken();
         } else {
             const child_el = try self.parseInlineElement();
-            _ = try modifier_el_stack.getLast().addChild(child_el);
+            _ = try modifier_el_stack.getLast().addChild(self.allocator, child_el);
         }
     }
 
@@ -553,7 +553,7 @@ fn err(
     e: Error,
     token: ?Tokenizer.Token
 ) Error {
-    try self.errors.append(.{
+    try self.errors.append(self.allocator, .{
         .err = e,
         .token = token,
     });
@@ -634,7 +634,7 @@ test "parses modifier" {
 
     const tokens = source.tokens;
 
-    const expected_ast = AstBuilder.init()
+    var expected_ast = AstBuilder.init()
         .text(tokens[0])
         .modifier(.bold, AstBuilder.init()
             .text(tokens[2])
@@ -642,7 +642,7 @@ test "parses modifier" {
         )
         .text(tokens[4])
         .build();
-    defer ast_builder.free(expected_ast);
+    defer ast_builder.free(&expected_ast);
 
     var parser = Parser.init(
         std.testing.allocator,
@@ -672,7 +672,7 @@ test "parses nested modifiers" {
 
     const tokens = source.tokens;
 
-    const expected_ast = AstBuilder.init()
+    var expected_ast = AstBuilder.init()
         .modifier(.bold, AstBuilder.init()
             .modifier(.italic, AstBuilder.init()
                 .modifier(.underline, AstBuilder.init()
@@ -687,7 +687,7 @@ test "parses nested modifiers" {
             .build()
         )
     .build();
-    defer ast_builder.free(expected_ast);
+    defer ast_builder.free(&expected_ast);
 
     var parser = Parser.init(
         std.testing.allocator,
@@ -711,12 +711,12 @@ test "parses pound as literal text" {
 
     const tokens = source.tokens;
 
-    const expected_ast = AstBuilder.init()
+    var expected_ast = AstBuilder.init()
         .text(tokens[0])
         .text(tokens[1])
         .text(tokens[2])
         .build();
-    defer ast_builder.free(expected_ast);
+    defer ast_builder.free(&expected_ast);
 
     var parser = Parser.init(
         std.testing.allocator,

@@ -42,49 +42,49 @@ pub const Element = union(enum) {
         };
     };
 
-    pub fn deinit(self: *const Element) void {
+    pub fn deinit(self: *Element, allocator: std.mem.Allocator) void {
         switch (self.*) {
             .heading => |*el| {
-                deinitChildren(el);
+                deinitChildren(allocator, el);
             },
             .callout => |*el| {
-                deinitChildren(el);
+                deinitChildren(allocator, el);
             },
             .url => |*el| {
-                deinitChildren(el);
+                deinitChildren(allocator, el);
             },
             .modifier => |*el| {
-                deinitChildren(el);
+                deinitChildren(allocator, el);
             },
             .block_code => |*el| {
-                deinitChildren(el);
+                deinitChildren(allocator, el);
             },
             else => {}
         }
     }
 
-    pub fn addChild(self: *Element, child: anytype) !*@TypeOf(child) {
+    pub fn addChild(self: *Element, allocator: std.mem.Allocator, child: anytype) !*@TypeOf(child) {
         return switch (@TypeOf(child)) {
             Element =>
                 switch (self.*) {
                     .heading => |*el| {
-                        try el.children.append(child);
+                        try el.children.append(allocator, child);
                         return &el.children.items[el.children.items.len - 1];
                     },
                     .callout => |*el| {
-                        try el.children.append(child);
+                        try el.children.append(allocator, child);
                         return &el.children.items[el.children.items.len - 1];
                     },
                     .url => |*el| {
-                        try el.children.append(child);
+                        try el.children.append(allocator, child);
                         return &el.children.items[el.children.items.len - 1];
                     },
                     .modifier => |*el| {
-                        try el.children.append(child);
+                        try el.children.append(allocator, child);
                         return &el.children.items[el.children.items.len - 1];
                     },
                     .block_code => |*el| {
-                        try el.children.append(child);
+                        try el.children.append(allocator, child);
                         return &el.children.items[el.children.items.len - 1];
                     },
                     else => unreachable,
@@ -98,7 +98,7 @@ pub const Element = union(enum) {
     }
 };
 
-fn deinitChildren(of: anytype) void {
-    for (of.children.items) |child| child.deinit();
-    of.children.deinit();
+fn deinitChildren(allocator: std.mem.Allocator, of: anytype) void {
+    for (of.children.items) |*child| child.deinit(allocator);
+    of.children.deinit(allocator);
 }

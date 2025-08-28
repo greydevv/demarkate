@@ -50,7 +50,7 @@ fn _renderHtml(allocator: std.mem.Allocator, source: []const u8) ![]const u8 {
     defer renderer.deinit();
 
     try renderer.render(document.elements);
-    const html = try renderer.buffer.toOwnedSlice();
+    const html = try renderer.buffer.toOwnedSlice(allocator);
 
     return html;
 }

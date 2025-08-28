@@ -5,12 +5,12 @@ const ast = @import("../ast.zig");
 
 const allocator = std.testing.allocator;
 
-pub fn free(elements: std.ArrayList(ast.Element)) void {
-    for (elements.items) |el| {
-        el.deinit();
+pub fn free(elements: *std.ArrayList(ast.Element)) void {
+    for (elements.items) |*el| {
+        el.deinit(allocator);
     }
 
-    elements.deinit();
+    elements.deinit(allocator);
 }
 
 pub const AstBuilder = struct {
@@ -19,7 +19,7 @@ pub const AstBuilder = struct {
     pub fn init() *AstBuilder {
         const builder = allocator.create(AstBuilder) catch unreachable;
         builder.* = .{
-            .elements = std.ArrayList(ast.Element).init(allocator)
+            .elements = std.ArrayList(ast.Element).empty
         };
 
         return builder;
@@ -32,7 +32,7 @@ pub const AstBuilder = struct {
             }
         };
 
-        self.elements.append(el) catch unreachable;
+        self.elements.append(allocator, el) catch unreachable;
         return self;
     }
 
@@ -52,12 +52,13 @@ pub const AstBuilder = struct {
     }
 
     fn node(self: *AstBuilder, el: ast.Element) *AstBuilder {
-        self.elements.append(el) catch unreachable;
+        self.elements.append(allocator, el) catch unreachable;
         return self;
     }
 
     fn leaf(self: *AstBuilder, comptime tag_name: []const u8, token: Tokenizer.Token) *AstBuilder {
         self.elements.append(
+            allocator,
             @unionInit(
                 ast.Element,
                 tag_name,

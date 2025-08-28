@@ -15,12 +15,12 @@ pub const Renderer = struct {
         return .{
             .allocator = allocator,
             .source = source,
-            .buffer = std.ArrayList(u8).init(allocator)
+            .buffer = std.ArrayList(u8).empty
         };
     }
 
     pub fn deinit(self: *Renderer) void {
-        self.buffer.deinit();
+        self.buffer.deinit(self.allocator);
     }
 
     pub fn render(self: *Renderer, elements: []const ast.Element) Error!void {
@@ -139,8 +139,8 @@ pub const Renderer = struct {
             },
             .inline_code => |span| {
                 // remove escaped backticks
-                var new_source = std.ArrayList(u8).init(self.allocator);
-                defer new_source.deinit();
+                var new_source = std.ArrayList(u8).empty;
+                defer new_source.deinit(self.allocator);
 
                 const source = span.slice(self.source);
                 for (source, 0..) |char, i| {
@@ -148,14 +148,14 @@ pub const Renderer = struct {
                         continue;
                     }
 
-                    try new_source.append(char);
+                    try new_source.append(self.allocator, char);
                 }
 
                 try self.openTagWithAttrs("code", &.{
                     .{ "class", "dmk_inline_code" }
                 });
 
-                try self.buffer.appendSlice(new_source.items);
+                try self.buffer.appendSlice(self.allocator, new_source.items);
                 try self.closeTag("code");
             },
             .img => |img| {
@@ -205,9 +205,9 @@ pub const Renderer = struct {
         tag: []const u8,
         attrs: []const Attr
     ) Error!void {
-        try self.buffer.append('<');
+        try self.buffer.append(self.allocator, '<');
 
-        try self.buffer.appendSlice(tag);
+        try self.buffer.appendSlice(self.allocator, tag);
 
         for (attrs) |attr| {
             const html_attr = try std.fmt.allocPrint(
@@ -217,10 +217,10 @@ pub const Renderer = struct {
             );
             defer self.allocator.free(html_attr);
 
-            try self.buffer.appendSlice(html_attr);
+            try self.buffer.appendSlice(self.allocator, html_attr);
         }
 
-        try self.buffer.append('>');
+        try self.buffer.append(self.allocator, '>');
     }
 
     fn closeTag(self: *Renderer, tag: []const u8) !void {
@@ -230,15 +230,15 @@ pub const Renderer = struct {
         const buf = std.fmt.bufPrint(&tmp_buf, fmt, .{ tag }) catch {
             const tag_close = try std.fmt.allocPrint(self.allocator, fmt, .{ tag });
             defer self.allocator.free(tag);
-            try self.buffer.appendSlice(tag_close);
+            try self.buffer.appendSlice(self.allocator, tag_close);
             return;
         };
 
-        try self.buffer.appendSlice(buf);
+        try self.buffer.appendSlice(self.allocator, buf);
     }
 
     fn appendSpan(self: *Renderer, span: pos.Span) !void {
         const source = span.slice(self.source);
-        try self.buffer.appendSlice(source);
+        try self.buffer.appendSlice(self.allocator, source);
     }
 };

@@ -401,15 +401,15 @@ fn testTokenize(source: [:0]const u8, expected_tags: []const Token.Tag) !void {
 }
 
 fn tokenize(source: [:0]const u8) ![]const Token {
-    var tokens = std.ArrayList(Token).init(std.testing.allocator);
+    var tokens = std.ArrayList(Token).empty;
     var tokenizer = Tokenizer.init(source);
     while(true) {
         const token = tokenizer.next();
-        try tokens.append(token);
+        try tokens.append(std.testing.allocator, token);
         if (token.tag == .eof) {
             break;
         }
     }
 
-    return tokens.toOwnedSlice();
+    return tokens.toOwnedSlice(std.testing.allocator);
 }

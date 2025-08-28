@@ -13,8 +13,8 @@ pub const Document = struct {
     elements: []ast.Element,
 
     pub fn deinit(self: *const Document) void {
-        for (self.elements) |el| {
-            el.deinit();
+        for (self.elements) |*el| {
+            el.deinit(self.allocator);
         }
 
         self.allocator.free(self.elements);
@@ -26,12 +26,12 @@ pub fn parseBytes(allocator: std.mem.Allocator, source: [:0]const u8) !Document 
 
     // tokenize
     var tokenizer = Tokenizer.init(source);
-    var tokens = std.ArrayList(Tokenizer.Token).init(allocator);
-    defer tokens.deinit();
+    var tokens = std.ArrayList(Tokenizer.Token).empty;
+    defer tokens.deinit(allocator);
 
     while (true) {
         const token = tokenizer.next();
-        try tokens.append(token);
+        try tokens.append(allocator, token);
         if (token.tag == .eof) break;
     }
 
@@ -56,7 +56,7 @@ pub fn parseBytes(allocator: std.mem.Allocator, source: [:0]const u8) !Document 
     // return elements;
     return Document{
         .allocator = allocator,
-        .elements = try parser.elements.toOwnedSlice()
+        .elements = try parser.elements.toOwnedSlice(allocator)
     };
 }
 
