@@ -1,7 +1,7 @@
 const std = @import("std");
 const dmk = @import("demarkate");
 
-const sample_file_path = "/Users/gr.murray/Developer/zig/demarkate/samples/test.md";
+const sample_file_path = "/Users/greysonmurray/Developer/zig/demarkate/test.md";
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -59,6 +59,9 @@ fn printAst(allocator: std.mem.Allocator, el: *const dmk.ast.Element, depth: u32
         },
         .line_break => {
             std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });
+        },
+        .indent => |node| {
+            std.debug.print("{s}- {s} ({})\n", .{ indent, @tagName(el.*), node.count });
         },
         .heading => |node| {
             std.debug.print("{s}- {s}\n", .{ indent, @tagName(el.*) });

@@ -87,9 +87,24 @@ pub fn expectEqual(expected_ast: std.ArrayList(ast.Element), actual_ast: std.Arr
 
         switch (expected) {
             .heading => |heading| {
+                if (!std.meta.eql(heading.level, actual.heading.level)) {
+                    return error.TestExpectedEqual;
+                }
+
                 try expectEqual(heading.children, actual.heading.children);
             },
+            .callout => |callout| {
+                if (!std.meta.eql(callout.style, actual.callout.style)) {
+                    return error.TestExpectedEqual;
+                }
+
+                try expectEqual(callout.children, actual.callout.children);
+            },
             .block_code => |block_code| {
+                if (!std.meta.eql(block_code.lang, actual.block_code.lang)) {
+                    return error.TestExpectedEqual;
+                }
+
                 try expectEqual(block_code.children, actual.block_code.children);
             },
             .modifier => |modifier| {
@@ -115,7 +130,6 @@ pub fn expectEqual(expected_ast: std.ArrayList(ast.Element), actual_ast: std.Arr
 
                 try expectEqual(url.children, actual.url.children);
             },
-            .callout => unreachable,
             .inline_code => |inline_code| {
                 try std.testing.expectEqual(inline_code, actual.inline_code);
             },
@@ -127,6 +141,9 @@ pub fn expectEqual(expected_ast: std.ArrayList(ast.Element), actual_ast: std.Arr
             },
             .line_break => |line_break| {
                 try std.testing.expectEqual(line_break, actual.line_break);
+            },
+            .indent => |indent| {
+                try std.testing.expectEqualDeep(indent, actual.indent);
             },
             .noop => |el| {
                 try std.testing.expectEqual(el, actual.noop);

@@ -119,6 +119,7 @@ fn parseInlineElement(self: *Parser) !ast.Element {
     return switch (token.tag) {
         .inline_code => self.parseInlineCode(),
         .newline => self.parseLineBreak(),
+        .tab => self.parseIndents(),
         .escaped_char => self.parseEscapedChar(),
         .literal_text => self.parseLiteralText(),
         .keyword_url => self.parseUrl(),
@@ -366,6 +367,31 @@ fn parseLineBreak(self: *Parser) Error!ast.Element {
     };
 }
 
+fn parseIndents(self: *Parser) Error!ast.Element {
+    if (self.tok_i > 0 and self.tokens[self.tok_i - 1].tag != .newline) {
+        return self.parseGreedilyAsLiteralText();
+    }
+
+    const first_indent = self.tokens[self.tok_i];
+    var last_indent = first_indent;
+    var count: usize = 0;
+    while (self.tokens[self.tok_i].tag == .tab) {
+        last_indent = self.tokens[self.tok_i];
+        self.tok_i += 1;
+        count += 1;
+    }
+
+    return ast.Element{
+        .indent = .{
+            .span = pos.Span{
+                .start = first_indent.span.start,
+                .end = last_indent.span.end,
+            },
+            .count = count
+        }
+    };
+}
+
 fn parseEscapedChar(self: *Parser) ast.Element {
     const token = self.assertToken(.escaped_char);
     self.skipToken();
@@ -540,12 +566,12 @@ fn skipToken(self: *Parser) void {
 }
 
 fn eatToken(self: *Parser) Tokenizer.Token {
-    if (self.tok_i == self.tokens.len - 1) {
-        return self.tokens[self.tok_i];
+    const token = self.tokens[self.tok_i];
+    if (self.tok_i < self.tokens.len - 1) {
+        self.tok_i += 1;
     }
 
-    self.tok_i += 1;
-    return self.tokens[self.tok_i - 1];
+    return token;
 }
 
 fn err(
@@ -728,14 +754,6 @@ test "parses pound as literal text" {
 
     try std.testing.expectEqual(0, parser.errors.items.len);
     try ast_builder.expectEqual(expected_ast, parser.elements);
-}
-
-test "parses block code" {
-    const source = source_builder
-        .tok(.keyword_code, "@code")
-        .eof();
-    defer source.deinit();
-
 }
 
 const source_builder = @import("testing/source_builder.zig");

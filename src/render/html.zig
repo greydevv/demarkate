@@ -192,6 +192,20 @@ pub const Renderer = struct {
                     try self.closeTag("div");
                 }
             },
+            .indent => |indent| {
+                try self.openTagWithAttrs("span", &.{
+                    .{ "class", "dmk_indent" }
+                });
+
+                for (0..indent.count) |_| {
+                    try self.buffer.appendSlice(
+                        self.allocator,
+                        "  "
+                    );
+                }
+
+                try self.closeTag("span");
+            },
             .noop => {},
         };
     }

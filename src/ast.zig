@@ -28,6 +28,10 @@ pub const Element = union(enum) {
     code_literal: pos.Span,
     text: pos.Span,
     line_break: pos.Span,
+    indent: struct {
+        span: pos.Span,
+        count: usize,
+    },
     noop,
 
     pub const Modifier = struct {
